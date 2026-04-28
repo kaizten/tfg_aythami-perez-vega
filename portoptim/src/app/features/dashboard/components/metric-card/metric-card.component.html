@@ -1,0 +1,13 @@
+<div class="bg-white p-lg rounded-xl border border-outline-variant shadow-card flex items-center justify-between">
+  <div>
+    <p class="text-on-surface-variant text-label-sm uppercase tracking-wider mb-xs">{{ title }}</p>
+    <h2 class="text-h1 font-bold text-on-surface">{{ value }}</h2>
+    <p class="text-label-sm flex items-center gap-1 mt-xs" [ngClass]="trendClass">
+      <span class="material-symbols-outlined text-sm">{{ trendIcon }}</span>
+      {{ trend }}
+    </p>
+  </div>
+  <div class="w-12 h-12 rounded-lg flex items-center justify-center" [ngClass]="iconBgClass">
+    <span class="material-symbols-outlined text-white icon-filled">{{ icon }}</span>
+  </div>
+</div>

@@ -1,0 +1,179 @@
+<div class="p-margin bg-background">
+  <section class="mb-xl">
+    <h2 class="text-h1 font-bold text-on-background mb-xs">Ingest Vessel Operations Data</h2>
+    <p class="text-body-md text-on-surface-variant">Upload and validate your dataset before running the optimization engine.</p>
+  </section>
+
+  <div class="grid grid-cols-12 gap-lg">
+    <!-- Upload + Results column -->
+    <div class="col-span-12 lg:col-span-8 flex flex-col gap-lg">
+
+      <!-- Upload Zone -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+        <div class="p-lg border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <h3 class="text-h3 font-semibold text-on-background flex items-center gap-sm">
+            <span class="material-symbols-outlined text-teal-600">upload_file</span>
+            Upload Dataset
+          </h3>
+          <span *ngIf="selectedFile" class="text-body-sm text-on-surface-variant flex items-center gap-xs">
+            <span class="material-symbols-outlined text-teal-600 text-sm">attach_file</span>
+            {{ selectedFile.name }}
+          </span>
+        </div>
+        <div class="p-lg">
+          <!-- Drop zone — hidden while loading -->
+          <div *ngIf="!loading"
+               class="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-xl transition-all cursor-pointer group"
+               [ngClass]="hasResult ? 'border-teal-400 bg-teal-50/30' : 'border-slate-200 hover:border-teal-500 hover:bg-teal-50/30'"
+               (dragover)="$event.preventDefault()" (drop)="onFileDrop($event)">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mb-md transition-transform group-hover:scale-110"
+                 [ngClass]="hasResult ? 'bg-teal-100' : 'bg-teal-50'">
+              <span class="material-symbols-outlined text-3xl" [ngClass]="hasResult ? 'text-teal-600' : 'text-teal-400'">
+                {{ hasResult ? 'check_circle' : 'cloud_upload' }}
+              </span>
+            </div>
+            <h4 class="text-h3 font-semibold mb-xs">
+              {{ hasResult ? 'Upload another file' : 'Drag and drop your dataset' }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant mb-lg">Supports CSV, XLSX — max 50MB</p>
+            <label>
+              <input type="file" accept=".csv,.xlsx" class="hidden" (change)="onFileSelect($event)">
+              <span class="bg-teal-600 text-white px-xl py-md rounded-lg text-label-md cursor-pointer hover:bg-teal-700 active:scale-95 transition-all shadow-md">
+                {{ hasResult ? 'Re-upload' : 'Browse Files' }}
+              </span>
+            </label>
+          </div>
+
+          <!-- Loading state -->
+          <div *ngIf="loading" class="flex flex-col items-center justify-center py-xl gap-md">
+            <div class="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
+            <p class="text-body-md text-on-surface-variant font-medium">Processing dataset…</p>
+          </div>
+
+          <!-- Error state -->
+          <div *ngIf="error && !loading" class="mt-md p-md bg-error-container/20 rounded-lg border border-error/20 flex items-start gap-md">
+            <span class="material-symbols-outlined text-error mt-0.5">error</span>
+            <div>
+              <p class="text-label-md text-error mb-xs">Transformation failed</p>
+              <p class="text-body-sm text-on-surface-variant">{{ error }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Table — shown after successful API response -->
+      <div *ngIf="hasResult" class="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+        <div class="p-lg border-b border-slate-100 flex justify-between items-center">
+          <div>
+            <h3 class="text-h3 font-semibold text-on-background">Transformed Preview</h3>
+            <p class="text-body-sm text-on-surface-variant mt-xs">
+              Showing first {{ previewRows.length }} of
+              {{ result!.transformation_summary.valid_rows }} valid records
+            </p>
+          </div>
+          <button type="button"
+                  (click)="goToOptimization()"
+                  class="flex items-center gap-sm bg-on-secondary-container text-white px-lg py-sm rounded-lg text-label-md hover:opacity-90 transition-all shadow-md">
+            <span class="material-symbols-outlined text-sm">insights</span>
+            View Optimization
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse">
+            <thead class="bg-[#002147] text-white">
+              <tr>
+                <th *ngFor="let col of columns"
+                    class="px-md py-3 text-left text-label-sm uppercase tracking-wider whitespace-nowrap">
+                  <div class="flex items-center gap-xs">
+                    {{ col.name }}
+                    <span class="material-symbols-outlined text-teal-400 text-sm">verified</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of previewRows; let odd = odd"
+                  class="border-b border-slate-100 hover:bg-teal-50/30 transition-colors"
+                  [ngClass]="odd ? 'bg-slate-50/40' : 'bg-white'">
+                <td *ngFor="let col of columns"
+                    class="px-md py-3 text-data-mono text-on-surface whitespace-nowrap">
+                  {{ formatCell(row, col.key) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-span-12 lg:col-span-4 flex flex-col gap-lg">
+
+      <!-- Transformation Summary (after API call) -->
+      <div *ngIf="hasResult; else waitingCard"
+           class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
+        <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">
+          Transformation Summary
+        </h4>
+        <div class="flex flex-col gap-md">
+          <div class="flex justify-between items-center border-b border-white/10 pb-sm">
+            <span class="text-body-sm text-slate-300">Total input rows</span>
+            <span class="text-label-md text-white">{{ result!.transformation_summary.total_input_rows }}</span>
+          </div>
+          <div class="flex justify-between items-center border-b border-white/10 pb-sm">
+            <span class="text-body-sm text-slate-300">Valid records</span>
+            <span class="text-label-md text-teal-400">{{ result!.transformation_summary.valid_rows }}</span>
+          </div>
+          <div class="flex justify-between items-center border-b border-white/10 pb-sm">
+            <span class="text-body-sm text-slate-300">Skipped rows</span>
+            <span class="text-label-md"
+                  [ngClass]="result!.transformation_summary.skipped_rows > 0 ? 'text-amber-400' : 'text-teal-400'">
+              {{ result!.transformation_summary.skipped_rows }}
+            </span>
+          </div>
+        </div>
+        <!-- Skipped reasons -->
+        <div *ngIf="result!.transformation_summary.skipped_reasons.length > 0" class="mt-md">
+          <p class="text-label-sm text-slate-400 uppercase tracking-widest mb-sm">Skip reasons</p>
+          <div class="space-y-xs max-h-32 overflow-y-auto">
+            <p *ngFor="let reason of result!.transformation_summary.skipped_reasons"
+               class="text-[11px] text-slate-400 leading-tight">• {{ reason }}</p>
+          </div>
+        </div>
+        <button type="button"
+                (click)="goToOptimization()"
+                class="mt-lg w-full py-sm rounded bg-on-secondary-container hover:opacity-90 transition-colors text-label-sm uppercase tracking-widest">
+          Proceed to Optimization →
+        </button>
+      </div>
+
+      <!-- Waiting card — no data yet -->
+      <ng-template #waitingCard>
+        <div class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
+          <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">Transformation Summary</h4>
+          <div class="flex flex-col items-center justify-center py-lg text-slate-500">
+            <span class="material-symbols-outlined text-4xl mb-sm">hourglass_empty</span>
+            <p class="text-body-sm text-center">Upload a file to see the transformation report.</p>
+          </div>
+        </div>
+      </ng-template>
+
+      <!-- Column Validation -->
+      <div class="bg-white rounded-xl border border-slate-200 p-lg shadow-card">
+        <h4 class="text-label-md text-on-surface-variant mb-md uppercase tracking-widest">
+          Output Columns
+        </h4>
+        <div class="space-y-sm">
+          <div *ngFor="let col of columns"
+               class="flex items-center gap-sm p-xs rounded">
+            <span class="material-symbols-outlined text-sm"
+                  [ngClass]="hasResult ? 'text-teal-600' : 'text-slate-300'">
+              {{ hasResult ? 'check_circle' : 'radio_button_unchecked' }}
+            </span>
+            <span class="text-body-sm text-on-surface">{{ col.name }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

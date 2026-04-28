@@ -1,0 +1,44 @@
+<div class="bg-white rounded-xl border border-outline-variant shadow-card overflow-hidden">
+  <div class="p-lg border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+    <div class="flex items-center gap-md">
+      <span class="material-symbols-outlined text-primary-container">timeline</span>
+      <h3 class="text-h3 font-semibold text-on-surface">Berth Allocation Timeline (24h)</h3>
+    </div>
+    <div class="flex gap-base">
+      <button type="button" class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all">PREVIOUS DAY</button>
+      <button type="button" class="px-md py-1.5 text-xs font-bold bg-on-secondary-container text-white rounded hover:opacity-90 transition-all shadow-md">TODAY</button>
+      <button type="button" class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all">NEXT DAY</button>
+    </div>
+  </div>
+
+  <div class="p-lg overflow-x-auto">
+    <div class="min-w-[900px]">
+      <!-- Hour headers -->
+      <div class="flex ml-36 border-b border-slate-200 pb-2 mb-4">
+        <div *ngFor="let hour of timeLabels" class="flex-1 text-center text-[10px] font-bold uppercase tracking-tighter"
+             [ngClass]="hour.current ? 'text-teal-600' : 'text-slate-400'">
+          {{ hour.label }}
+        </div>
+      </div>
+
+      <!-- Berth rows -->
+      <div class="space-y-4 relative">
+        <div class="absolute top-0 bottom-0 w-[2px] bg-teal-500 z-10 opacity-50" [style.left]="currentTimeOffset"></div>
+        <div *ngFor="let berth of berths" class="flex items-center">
+          <div class="w-36 pr-md">
+            <span class="text-label-md text-on-surface-variant">{{ berth.name }}</span>
+          </div>
+          <div class="flex-1 h-10 bg-slate-50 rounded relative overflow-hidden flex items-center">
+            <div *ngFor="let block of berth.blocks"
+                 class="absolute h-8 rounded flex items-center px-md text-[11px] font-bold shadow-sm"
+                 [ngClass]="block.colorClass"
+                 [style.left]="block.left"
+                 [style.width]="block.width">
+              {{ block.label }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

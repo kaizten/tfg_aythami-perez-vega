@@ -1,0 +1,48 @@
+<aside class="fixed inset-y-0 left-0 w-[260px] h-screen bg-[#002147] border-r border-slate-800 shadow-2xl z-50 flex flex-col">
+  <div class="p-lg flex flex-col gap-base">
+    <div class="flex items-center gap-md px-base mb-xl">
+      <div class="w-10 h-10 bg-on-secondary-container rounded-lg flex items-center justify-center">
+        <span class="material-symbols-outlined icon-filled text-white">anchor</span>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-white uppercase tracking-wider leading-tight">PortOptim</h1>
+        <p class="text-sm font-medium tracking-wide text-slate-400">Terminal Operations</p>
+      </div>
+    </div>
+
+    <nav class="flex flex-col gap-xs">
+      <a routerLink="/dashboard" routerLinkActive="!text-teal-400 bg-teal-500/10 border-l-4 border-teal-500"
+         class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 rounded-sm">
+        <span class="material-symbols-outlined">dashboard</span>
+        <span class="text-sm font-medium tracking-wide">Dashboard</span>
+      </a>
+      <a routerLink="/data-input" routerLinkActive="!text-teal-400 bg-teal-500/10 border-l-4 border-teal-500"
+         class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 rounded-sm">
+        <span class="material-symbols-outlined">edit_square</span>
+        <span class="text-sm font-medium tracking-wide">Data Input</span>
+      </a>
+      <a routerLink="/optimization" routerLinkActive="!text-teal-400 bg-teal-500/10 border-l-4 border-teal-500"
+         class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 rounded-sm">
+        <span class="material-symbols-outlined">insights</span>
+        <span class="text-sm font-medium tracking-wide">Optimization</span>
+      </a>
+      <a routerLink="/history" routerLinkActive="!text-teal-400 bg-teal-500/10 border-l-4 border-teal-500"
+         class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 rounded-sm">
+        <span class="material-symbols-outlined">history</span>
+        <span class="text-sm font-medium tracking-wide">History</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="mt-auto p-lg border-t border-slate-800">
+    <div class="flex items-center gap-md">
+      <div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center">
+        <span class="material-symbols-outlined text-white">person</span>
+      </div>
+      <div>
+        <p class="text-white text-xs font-semibold">Capt. Henderson</p>
+        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-tighter">Chief Dispatcher</p>
+      </div>
+    </div>
+  </div>
+</aside>

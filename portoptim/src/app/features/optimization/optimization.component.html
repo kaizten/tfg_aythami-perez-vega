@@ -1,0 +1,105 @@
+<div class="p-margin bg-background">
+
+  <!-- Empty state — no data uploaded yet -->
+  <div *ngIf="!hasData" class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-lg">
+    <div class="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
+      <span class="material-symbols-outlined text-4xl text-on-surface-variant">upload_file</span>
+    </div>
+    <div>
+      <h3 class="text-h2 font-semibold text-on-surface mb-xs">No dataset loaded</h3>
+      <p class="text-body-md text-on-surface-variant mb-lg">Upload a port operations CSV to generate the optimization schedule.</p>
+      <a routerLink="/data-input"
+         class="inline-flex items-center gap-sm px-lg py-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md text-label-md">
+        <span class="material-symbols-outlined">edit_square</span>
+        Go to Data Input
+      </a>
+    </div>
+  </div>
+
+  <!-- Loaded state -->
+  <ng-container *ngIf="hasData">
+    <!-- Header -->
+    <div class="flex justify-between items-end mb-xl">
+      <div>
+        <h3 class="text-h1 font-bold text-on-surface">Vessel Schedule Optimization</h3>
+        <p class="text-body-md text-on-surface-variant mt-xs">
+          {{ kpis[0].value }} records across {{ kpis[1].value }} berths
+        </p>
+      </div>
+      <div class="flex gap-md">
+        <a routerLink="/data-input"
+           class="flex items-center gap-sm px-lg py-md border border-slate-200 text-on-surface rounded-lg hover:bg-white transition-colors text-label-md">
+          <span class="material-symbols-outlined">refresh</span>
+          New Dataset
+        </a>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
+      <div *ngFor="let kpi of kpis"
+           class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
+          <p class="text-label-sm text-on-surface-variant uppercase tracking-wider">{{ kpi.label }}</p>
+          <span class="material-symbols-outlined" [ngClass]="kpi.positive ? 'text-teal-600' : 'text-amber-500'">
+            {{ kpi.icon }}
+          </span>
+        </div>
+        <div class="mt-md">
+          <p class="text-h1 font-bold text-on-surface">{{ kpi.value }}</p>
+          <p class="text-body-sm mt-xs" [ngClass]="kpi.positive ? 'text-teal-600' : 'text-amber-500'">
+            {{ kpi.change }}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gantt Chart -->
+    <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+      <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+        <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+          <span class="material-symbols-outlined text-teal-600">view_timeline</span>
+          Berth Allocation Timeline
+        </h4>
+        <p class="text-body-sm text-on-surface-variant">Click a vessel block to see details</p>
+      </div>
+      <div class="overflow-x-auto">
+        <div class="min-w-[900px] p-lg">
+          <!-- Time axis labels -->
+          <div class="flex ml-28 border-b border-slate-200 mb-4 pb-2">
+            <div *ngFor="let h of ganttHours"
+                 class="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+              {{ h }}
+            </div>
+          </div>
+          <!-- Berth rows -->
+          <div *ngFor="let berth of ganttBerths; let even = even"
+               class="flex items-center border-t border-slate-100 py-2"
+               [ngClass]="even ? 'bg-slate-50/40' : 'bg-white'">
+            <div class="w-28 pr-md flex-shrink-0">
+              <span class="text-label-sm text-on-surface-variant truncate block">{{ berth.name }}</span>
+            </div>
+            <div class="flex-1 h-10 relative">
+              <div *ngFor="let vessel of berth.vessels"
+                   class="absolute top-0 h-10 rounded-lg flex items-center px-3 text-white text-[11px] font-bold shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden"
+                   [ngClass]="vessel.colorClass"
+                   [style.left]="vessel.left"
+                   [style.width]="vessel.width"
+                   [title]="vessel.name + ' — ' + vessel.call.operation_type"
+                   (click)="openVesselDetail(vessel)">
+                <span class="truncate">{{ vessel.name }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</div>
+
+<!-- Vessel Detail Panel -->
+<app-vessel-detail-panel
+  [vessel]="selectedVessel"
+  [isOpen]="isPanelOpen"
+  (close)="isPanelOpen = false">
+</app-vessel-detail-panel>
