@@ -127,6 +127,7 @@ export class DataInputComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.paramsStore.set(this.optimizationParams);
     this.sub?.unsubscribe();
   }
 
