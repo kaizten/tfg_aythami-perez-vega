@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_v1_router
+from app.api.v1.routes.ais_stream import router as ais_router
 from app.config import get_settings
 from app.core.exceptions import (
     FileTooLargeError,
@@ -50,6 +51,7 @@ app.add_exception_handler(FileTooLargeError, file_too_large_handler)  # type: ig
 
 # --- Routers ---
 app.include_router(api_v1_router)
+app.include_router(ais_router)  # WebSocket relay at /ws/ais-stream
 
 
 @app.get("/health", tags=["meta"])

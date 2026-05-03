@@ -1,0 +1,48 @@
+<div class="bg-white rounded-xl border border-outline-variant shadow-card overflow-hidden min-h-[380px] h-full flex flex-col">
+
+  <!-- Card header — relative + z-index keeps it above Leaflet tile layers -->
+  <div class="relative z-[1002] bg-white p-lg border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-md">
+      <span class="material-symbols-outlined text-teal-600">map</span>
+      <h3 class="text-h3 font-semibold text-on-surface">{{ 'dash.map.title' | translate }}</h3>
+    </div>
+
+    <!-- Connection status badge -->
+    <div class="flex items-center gap-sm">
+      <span class="w-2 h-2 rounded-full transition-colors"
+            [ngClass]="(ais.status$ | async) === 'live'
+              ? 'bg-green-500 animate-pulse'
+              : 'bg-amber-400'">
+      </span>
+      <span class="text-[11px] font-bold uppercase tracking-widest"
+            [ngClass]="(ais.status$ | async) === 'live'
+              ? 'text-green-600'
+              : 'text-amber-500'">
+        {{ (ais.status$ | async) === 'live' ? 'LIVE' : 'RECONNECTING...' }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Map area — explicit height so Leaflet always has concrete dimensions at init -->
+  <div class="relative h-[440px] overflow-hidden">
+
+    <!-- Leaflet container — full width/height of explicit parent -->
+    <div #mapEl class="w-full h-full"></div>
+
+    <!-- Legend overlay (z-index above Leaflet tiles but below popups) -->
+    <div class="absolute bottom-3 left-3 z-[1001] bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-md px-3 py-2 space-y-1 pointer-events-none select-none">
+      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+        <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></span>
+        Under way
+      </div>
+      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+        <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0"></span>
+        At anchor
+      </div>
+      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+        <span class="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+        Moored
+      </div>
+    </div>
+  </div>
+</div>

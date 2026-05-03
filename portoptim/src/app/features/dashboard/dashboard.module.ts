@@ -6,6 +6,7 @@ import { DashboardComponent } from './dashboard.component';
 import { MetricCardComponent } from './components/metric-card/metric-card.component';
 import { BerthTimelineComponent } from './components/berth-timeline/berth-timeline.component';
 import { ActionAlertsComponent } from './components/action-alerts/action-alerts.component';
+import { TerminalMapComponent } from './components/terminal-map/terminal-map.component';
 
 @NgModule({
   declarations: [
@@ -13,6 +14,7 @@ import { ActionAlertsComponent } from './components/action-alerts/action-alerts.
     MetricCardComponent,
     BerthTimelineComponent,
     ActionAlertsComponent,
+    TerminalMapComponent,
   ],
   imports: [
     SharedModule,
