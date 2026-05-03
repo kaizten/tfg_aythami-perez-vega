@@ -1,20 +1,79 @@
 <header class="h-16 ml-[260px] w-[calc(100%-260px)] sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-8">
+
+  <!-- Left: title + port -->
   <div class="flex items-center gap-md">
-    <h2 class="text-lg font-black text-slate-900">Operations Center</h2>
+    <h2 class="text-lg font-black text-slate-900">{{ 'topbar.title' | translate }}</h2>
     <div class="h-4 w-px bg-slate-200 mx-xs"></div>
-    <span class="text-slate-500 text-label-sm uppercase tracking-wider">PORT OF SINGAPORE</span>
+    <span class="text-slate-500 text-label-sm uppercase tracking-wider">{{ 'topbar.port' | translate }}</span>
   </div>
 
+  <!-- Right: location + actions -->
   <div class="flex items-center gap-lg">
-    <div class="flex items-center gap-md bg-surface-container-low px-md py-xs rounded-full cursor-pointer hover:bg-surface-container transition-colors">
+
+    <!-- Location chip -->
+    <div class="flex items-center gap-md bg-surface-container-low px-md py-xs rounded-full">
       <span class="material-symbols-outlined text-teal-600">location_on</span>
-      <span class="text-sm font-semibold text-slate-700">Terminal 4 - West Side</span>
-      <span class="material-symbols-outlined text-slate-400">expand_more</span>
+      <span class="text-sm font-semibold text-slate-700">{{ 'topbar.location' | translate }}</span>
     </div>
-    <div class="flex items-center gap-md">
-      <button type="button" class="material-symbols-outlined text-slate-500 hover:text-teal-600 cursor-pointer transition-colors">notifications</button>
-      <button type="button" class="material-symbols-outlined text-slate-500 hover:text-teal-600 cursor-pointer transition-colors">help</button>
-      <button type="button" class="material-symbols-outlined text-slate-500 hover:text-teal-600 cursor-pointer transition-colors">settings</button>
+
+    <div class="flex items-center gap-sm">
+
+      <!-- ── Help button ─────────────────────────────────────── -->
+      <div class="relative">
+        <button type="button"
+                (click)="toggleHelp()"
+                class="material-symbols-outlined p-xs rounded-full transition-colors"
+                [ngClass]="helpOpen ? 'text-teal-600 bg-teal-50' : 'text-slate-500 hover:text-teal-600 hover:bg-slate-50'">
+          help
+        </button>
+
+        <!-- backdrop -->
+        <div *ngIf="helpOpen" class="fixed inset-0 z-40" (click)="closeHelp()"></div>
+
+        <!-- help popover -->
+        <div *ngIf="helpOpen"
+             class="absolute right-0 top-full mt-2 z-50 w-72 bg-white rounded-xl border border-slate-200 shadow-xl p-lg">
+          <div class="flex items-center gap-sm mb-sm">
+            <span class="material-symbols-outlined text-teal-600 text-lg">info</span>
+            <h5 class="text-label-md font-semibold text-on-background">{{ helpTitle }}</h5>
+          </div>
+          <p class="text-body-sm text-on-surface-variant leading-relaxed">{{ helpBody }}</p>
+        </div>
+      </div>
+
+      <!-- ── Language selector ───────────────────────────────── -->
+      <div class="relative">
+        <button type="button"
+                (click)="toggleLang()"
+                class="flex items-center gap-xs px-sm py-xs rounded-full border text-label-sm font-semibold transition-colors min-w-[56px] justify-center"
+                [ngClass]="langOpen
+                  ? 'border-teal-500 text-teal-600 bg-teal-50'
+                  : 'border-slate-300 text-slate-600 hover:border-teal-400 hover:text-teal-600'">
+          {{ lang.current | uppercase }}
+          <span class="material-symbols-outlined text-sm transition-transform duration-200"
+                [ngClass]="langOpen ? 'rotate-180' : ''">
+            expand_more
+          </span>
+        </button>
+
+        <!-- backdrop -->
+        <div *ngIf="langOpen" class="fixed inset-0 z-40" (click)="closeLang()"></div>
+
+        <!-- language dropdown -->
+        <div *ngIf="langOpen"
+             class="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl border border-slate-200 shadow-xl py-xs w-44">
+          <div *ngFor="let l of languages"
+               (click)="selectLang(l.code)"
+               class="flex items-center justify-between px-md py-sm text-body-sm cursor-pointer transition-colors select-none"
+               [ngClass]="l.code === lang.current
+                 ? 'bg-teal-50 text-teal-700 font-semibold'
+                 : 'text-on-surface hover:bg-slate-50'">
+            <span>{{ l.label }}</span>
+            <span class="text-[11px] text-slate-400 font-mono">{{ l.code | uppercase }}</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </header>

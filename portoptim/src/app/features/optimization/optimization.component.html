@@ -6,12 +6,12 @@
       <span class="material-symbols-outlined text-4xl text-on-surface-variant">upload_file</span>
     </div>
     <div>
-      <h3 class="text-h2 font-semibold text-on-surface mb-xs">No dataset loaded</h3>
-      <p class="text-body-md text-on-surface-variant mb-lg">Upload a port operations CSV to generate the optimization schedule.</p>
+      <h3 class="text-h2 font-semibold text-on-surface mb-xs">{{ 'opt.no_data.title' | translate }}</h3>
+      <p class="text-body-md text-on-surface-variant mb-lg">{{ 'opt.no_data.body' | translate }}</p>
       <a routerLink="/data-input"
          class="inline-flex items-center gap-sm px-lg py-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md text-label-md">
         <span class="material-symbols-outlined">edit_square</span>
-        Go to Data Input
+        {{ 'opt.no_data.cta' | translate }}
       </a>
     </div>
   </div>
@@ -21,16 +21,16 @@
     <!-- Header -->
     <div class="flex justify-between items-end mb-xl">
       <div>
-        <h3 class="text-h1 font-bold text-on-surface">Vessel Schedule Optimization</h3>
+        <h3 class="text-h1 font-bold text-on-surface">{{ 'opt.title' | translate }}</h3>
         <p class="text-body-md text-on-surface-variant mt-xs">
-          {{ kpis[0].value }} records across {{ kpis[1].value }} berths
+          {{ kpis[0].value }} {{ 'opt.records' | translate }} {{ kpis[1].value }} {{ 'opt.berths' | translate }}
         </p>
       </div>
       <div class="flex gap-md">
         <a routerLink="/data-input"
            class="flex items-center gap-sm px-lg py-md border border-slate-200 text-on-surface rounded-lg hover:bg-white transition-colors text-label-md">
           <span class="material-symbols-outlined">refresh</span>
-          New Dataset
+          {{ 'opt.new_dataset' | translate }}
         </a>
       </div>
     </div>
@@ -59,9 +59,9 @@
       <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
           <span class="material-symbols-outlined text-teal-600">view_timeline</span>
-          Berth Allocation Timeline
+          {{ 'opt.gantt.title' | translate }}
         </h4>
-        <p class="text-body-sm text-on-surface-variant">Click a vessel block to see details</p>
+        <p class="text-body-sm text-on-surface-variant">{{ 'opt.gantt.hint' | translate }}</p>
       </div>
       <div class="overflow-x-auto">
         <div class="min-w-[900px] p-lg">

@@ -1,6 +1,6 @@
 <div class="bg-white rounded-xl border border-outline-variant shadow-card flex flex-col h-full">
   <div class="p-lg border-b border-slate-100">
-    <h3 class="text-h3 font-semibold text-on-surface">Action Required</h3>
+    <h3 class="text-h3 font-semibold text-on-surface">{{ 'alerts.title' | translate }}</h3>
   </div>
 
   <div class="p-lg space-y-md flex-1">
@@ -9,9 +9,11 @@
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-error">priority_high</span>
         <div>
-          <h4 class="text-label-md text-on-surface mb-xs">Assignment Timeout</h4>
-          <p class="text-xs text-on-surface-variant">Berth Alpha-03 assignment for Vessel 'Blue Pacific' expires in 12m.</p>
-          <button type="button" class="mt-md text-[11px] font-black text-error uppercase tracking-widest hover:underline">Reassign Now</button>
+          <h4 class="text-label-md text-on-surface mb-xs">{{ 'alerts.critical.title' | translate }}</h4>
+          <p class="text-xs text-on-surface-variant">{{ 'alerts.critical.body' | translate }}</p>
+          <button type="button" class="mt-md text-[11px] font-black text-error uppercase tracking-widest hover:underline">
+            {{ 'alerts.critical.action' | translate }}
+          </button>
         </div>
       </div>
     </div>
@@ -21,9 +23,11 @@
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-on-secondary-container">anchor</span>
         <div>
-          <h4 class="text-label-md text-on-surface mb-xs">Incoming Vessel</h4>
-          <p class="text-xs text-on-surface-variant">'Nordic Star' entering harbor limits. Ready for docking instructions.</p>
-          <button type="button" class="mt-md text-[11px] font-black text-on-secondary-container uppercase tracking-widest hover:underline">Send Berth Data</button>
+          <h4 class="text-label-md text-on-surface mb-xs">{{ 'alerts.info.title' | translate }}</h4>
+          <p class="text-xs text-on-surface-variant">{{ 'alerts.info.body' | translate }}</p>
+          <button type="button" class="mt-md text-[11px] font-black text-on-secondary-container uppercase tracking-widest hover:underline">
+            {{ 'alerts.info.action' | translate }}
+          </button>
         </div>
       </div>
     </div>
@@ -33,14 +37,16 @@
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-slate-400">info</span>
         <div>
-          <h4 class="text-label-md text-on-surface mb-xs">Shift Change</h4>
-          <p class="text-xs text-on-surface-variant">Night shift team scheduled for 18:00 handover.</p>
+          <h4 class="text-label-md text-on-surface mb-xs">{{ 'alerts.notice.title' | translate }}</h4>
+          <p class="text-xs text-on-surface-variant">{{ 'alerts.notice.body' | translate }}</p>
         </div>
       </div>
     </div>
   </div>
 
   <div class="p-lg pt-0">
-    <button type="button" class="w-full py-md text-xs font-bold text-on-surface-variant bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors">VIEW ALL NOTIFICATIONS</button>
+    <button type="button" class="w-full py-md text-xs font-bold text-on-surface-variant bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors">
+      {{ 'alerts.view_all' | translate }}
+    </button>
   </div>
 </div>

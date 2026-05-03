@@ -4,8 +4,8 @@
        class="mb-xl p-md bg-surface-container-low border border-outline-variant rounded-xl flex items-center gap-md">
     <span class="material-symbols-outlined text-on-surface-variant">info</span>
     <p class="text-body-sm text-on-surface-variant flex-1">
-      No dataset loaded — KPIs will update after you upload data in
-      <a routerLink="/data-input" class="text-teal-600 font-semibold hover:underline">Data Input</a>.
+      {{ 'dash.no_data_msg' | translate }}
+      <a routerLink="/data-input" class="text-teal-600 font-semibold hover:underline">{{ 'nav.data_input' | translate }}</a>.
     </p>
   </div>
 
@@ -13,9 +13,9 @@
   <div class="grid grid-cols-12 gap-gutter mb-xl">
     <div class="col-span-12 md:col-span-4">
       <app-metric-card
-        title="Total Vessels"
+        [title]="'dash.metric.total_vessels' | translate"
         [value]="totalVessels"
-        [trend]="hasData ? 'transformed port calls' : 'upload a dataset'"
+        [trend]="hasData ? ('dash.metric.trend_data' | translate) : ('dash.metric.upload_prompt' | translate)"
         trendIcon="directions_boat"
         trendClass="text-teal-600"
         icon="directions_boat"
@@ -25,9 +25,9 @@
 
     <div class="col-span-12 md:col-span-4">
       <app-metric-card
-        title="Active Berths"
+        [title]="'dash.metric.active_berths' | translate"
         [value]="uniqueBerths"
-        [trend]="hasData ? 'unique berth IDs' : 'upload a dataset'"
+        [trend]="hasData ? ('dash.metric.berth_ids' | translate) : ('dash.metric.upload_prompt' | translate)"
         trendIcon="dock"
         trendClass="text-teal-600"
         icon="dock"
@@ -37,9 +37,9 @@
 
     <div class="col-span-12 md:col-span-4">
       <app-metric-card
-        title="Avg. Duration"
+        [title]="'dash.metric.avg_duration' | translate"
         [value]="avgDuration"
-        [trend]="hasData ? 'per port call' : 'upload a dataset'"
+        [trend]="hasData ? ('dash.metric.per_call' | translate) : ('dash.metric.upload_prompt' | translate)"
         trendIcon="timer"
         [trendClass]="skippedRows !== '0' && hasData ? 'text-amber-500' : 'text-teal-600'"
         icon="timer"
@@ -59,17 +59,17 @@
       <div class="p-lg border-b border-slate-100 flex items-center justify-between">
         <div class="flex items-center gap-md">
           <span class="material-symbols-outlined text-teal-600">map</span>
-          <h3 class="text-h3 font-semibold text-on-surface">Terminal Visual Layout</h3>
+          <h3 class="text-h3 font-semibold text-on-surface">{{ 'dash.map.title' | translate }}</h3>
         </div>
         <div class="flex items-center gap-sm">
           <span class="w-3 h-3 bg-teal-500 rounded-full"></span>
-          <span class="text-xs text-label-md text-on-surface-variant">Operational</span>
+          <span class="text-xs text-label-md text-on-surface-variant">{{ 'dash.map.status' | translate }}</span>
         </div>
       </div>
       <div class="flex-1 relative bg-slate-100 flex items-center justify-center">
         <div class="text-center text-slate-400">
           <span class="material-symbols-outlined text-6xl mb-4 block">satellite_alt</span>
-          <p class="text-body-sm">Terminal Map — integrate live feed here</p>
+          <p class="text-body-sm">{{ 'dash.map.placeholder' | translate }}</p>
         </div>
         <div class="absolute top-10 left-10 p-md bg-white/90 backdrop-blur rounded-lg border border-slate-200 shadow-xl">
           <p class="text-[10px] font-bold text-slate-400 uppercase mb-xs">Camera Node 04</p>
@@ -90,7 +90,7 @@
   <div class="fixed bottom-margin right-margin flex flex-col items-end gap-md z-30">
     <button type="button" class="flex items-center gap-md bg-on-secondary-container text-white px-lg py-md rounded-full shadow-2xl hover:opacity-90 active:scale-95 transition-all">
       <span class="material-symbols-outlined">add</span>
-      <span class="text-label-md">NEW ASSIGNMENT</span>
+      <span class="text-label-md">{{ 'dash.fab' | translate }}</span>
     </button>
   </div>
 </div>

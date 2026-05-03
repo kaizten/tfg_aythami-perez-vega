@@ -25,7 +25,30 @@ export interface TransformationSummary {
 
 export interface TransformApiResponse {
   transformation_summary: TransformationSummary;
+  available_ports: string[];
   data: BerthCall[];
+}
+
+/** BAP variant that determines how a mooring zone allocates space. */
+export type BapType = 'continuous' | 'discrete';
+
+/**
+ * User-supplied configuration for one mooring zone.
+ * - continuous: berthing position is a continuous variable in [0, noray_max]; no overlaps allowed.
+ * - discrete:   fixed number of simultaneous slots (capacity); only temporal occupancy is constrained.
+ */
+export interface MooringZoneConfig {
+  berth_id: string;
+  bap_type: BapType;
+  noray_max: number | null;  // continuous only — upper bound of the berth axis
+  capacity: number | null;   // discrete only  — max simultaneous vessels
+}
+
+/** User-supplied inputs for the optimization algorithm. */
+export interface OptimizationParams {
+  num_pilots: number | null;
+  num_tugs: number | null;
+  mooring_zones: MooringZoneConfig[];
 }
 
 export interface ApiError {

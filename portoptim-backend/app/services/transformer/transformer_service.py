@@ -1,6 +1,7 @@
 """Orchestrates the full data transformation pipeline."""
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -17,6 +18,14 @@ from app.services.transformer.validator import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PORT_PREFIX_RE = re.compile(r"^([A-Za-z]+)")
+
+
+def _port_code(call_id: str) -> str:
+    """Extract the alphabetic port prefix from a call_id (e.g. 'T202200020' → 'T')."""
+    m = _PORT_PREFIX_RE.match(call_id)
+    return m.group(1).upper() if m else "UNKNOWN"
 
 
 @dataclass
@@ -35,6 +44,7 @@ class TransformationResult:
 
     records: list[BerthCall]
     summary: TransformationSummary
+    available_ports: list[str] = field(default_factory=list)
 
 
 def _row_to_berth_call(
@@ -159,11 +169,14 @@ def run_pipeline(df: pd.DataFrame) -> TransformationResult:
     summary.valid_rows = len(records)
     summary.skipped_rows = summary.total_input_rows - summary.valid_rows
 
+    available_ports = sorted({_port_code(r.call_id) for r in records})
+
     logger.info(
-        "Pipeline complete — input=%d, valid=%d, skipped=%d",
+        "Pipeline complete — input=%d, valid=%d, skipped=%d, ports=%s",
         summary.total_input_rows,
         summary.valid_rows,
         summary.skipped_rows,
+        available_ports,
     )
 
-    return TransformationResult(records=records, summary=summary)
+    return TransformationResult(records=records, summary=summary, available_ports=available_ports)

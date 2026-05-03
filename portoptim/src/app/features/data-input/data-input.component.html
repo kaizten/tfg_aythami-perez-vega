@@ -1,11 +1,11 @@
 <div class="p-margin bg-background">
   <section class="mb-xl">
-    <h2 class="text-h1 font-bold text-on-background mb-xs">Ingest Vessel Operations Data</h2>
-    <p class="text-body-md text-on-surface-variant">Upload and validate your dataset before running the optimization engine.</p>
+    <h2 class="text-h1 font-bold text-on-background mb-xs">{{ 'di.page_title' | translate }}</h2>
+    <p class="text-body-md text-on-surface-variant">{{ 'di.page_subtitle' | translate }}</p>
   </section>
 
   <div class="grid grid-cols-12 gap-lg">
-    <!-- Upload + Results column -->
+    <!-- Upload + Preview column -->
     <div class="col-span-12 lg:col-span-8 flex flex-col gap-lg">
 
       <!-- Upload Zone -->
@@ -13,7 +13,7 @@
         <div class="p-lg border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <h3 class="text-h3 font-semibold text-on-background flex items-center gap-sm">
             <span class="material-symbols-outlined text-teal-600">upload_file</span>
-            Upload Dataset
+            {{ 'di.upload.title' | translate }}
           </h3>
           <span *ngIf="selectedFile" class="text-body-sm text-on-surface-variant flex items-center gap-xs">
             <span class="material-symbols-outlined text-teal-600 text-sm">attach_file</span>
@@ -21,7 +21,7 @@
           </span>
         </div>
         <div class="p-lg">
-          <!-- Drop zone — hidden while loading -->
+          <!-- Drop zone -->
           <div *ngIf="!loading"
                class="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-xl transition-all cursor-pointer group"
                [ngClass]="hasResult ? 'border-teal-400 bg-teal-50/30' : 'border-slate-200 hover:border-teal-500 hover:bg-teal-50/30'"
@@ -33,13 +33,13 @@
               </span>
             </div>
             <h4 class="text-h3 font-semibold mb-xs">
-              {{ hasResult ? 'Upload another file' : 'Drag and drop your dataset' }}
+              {{ (hasResult ? 'di.upload.another' : 'di.upload.drag') | translate }}
             </h4>
-            <p class="text-body-sm text-on-surface-variant mb-lg">Supports CSV, XLSX — max 50MB</p>
+            <p class="text-body-sm text-on-surface-variant mb-lg">{{ 'di.upload.formats' | translate }}</p>
             <label>
               <input type="file" accept=".csv,.xlsx" class="hidden" (change)="onFileSelect($event)">
               <span class="bg-teal-600 text-white px-xl py-md rounded-lg text-label-md cursor-pointer hover:bg-teal-700 active:scale-95 transition-all shadow-md">
-                {{ hasResult ? 'Re-upload' : 'Browse Files' }}
+                {{ (hasResult ? 'di.upload.reupload' : 'di.upload.browse') | translate }}
               </span>
             </label>
           </div>
@@ -47,35 +47,37 @@
           <!-- Loading state -->
           <div *ngIf="loading" class="flex flex-col items-center justify-center py-xl gap-md">
             <div class="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
-            <p class="text-body-md text-on-surface-variant font-medium">Processing dataset…</p>
+            <p class="text-body-md text-on-surface-variant font-medium">{{ 'di.upload.processing' | translate }}</p>
           </div>
 
           <!-- Error state -->
           <div *ngIf="error && !loading" class="mt-md p-md bg-error-container/20 rounded-lg border border-error/20 flex items-start gap-md">
             <span class="material-symbols-outlined text-error mt-0.5">error</span>
             <div>
-              <p class="text-label-md text-error mb-xs">Transformation failed</p>
+              <p class="text-label-md text-error mb-xs">{{ 'di.upload.error' | translate }}</p>
               <p class="text-body-sm text-on-surface-variant">{{ error }}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Preview Table — shown after successful API response -->
+      <!-- Preview Table -->
       <div *ngIf="hasResult" class="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         <div class="p-lg border-b border-slate-100 flex justify-between items-center">
           <div>
-            <h3 class="text-h3 font-semibold text-on-background">Transformed Preview</h3>
+            <h3 class="text-h3 font-semibold text-on-background">{{ 'di.preview.title' | translate }}</h3>
             <p class="text-body-sm text-on-surface-variant mt-xs">
-              Showing first {{ previewRows.length }} of
-              {{ result!.transformation_summary.valid_rows }} valid records
+              {{ 'di.preview.showing' | translate }} {{ previewRows.length }}
+              {{ 'di.preview.of' | translate }}
+              {{ result!.transformation_summary.valid_rows }}
+              {{ 'di.preview.records' | translate }}
             </p>
           </div>
           <button type="button"
                   (click)="goToOptimization()"
                   class="flex items-center gap-sm bg-on-secondary-container text-white px-lg py-sm rounded-lg text-label-md hover:opacity-90 transition-all shadow-md">
             <span class="material-symbols-outlined text-sm">insights</span>
-            View Optimization
+            {{ 'di.preview.view_opt' | translate }}
           </button>
         </div>
         <div class="overflow-x-auto">
@@ -109,32 +111,37 @@
     <!-- Sidebar -->
     <div class="col-span-12 lg:col-span-4 flex flex-col gap-lg">
 
-      <!-- Transformation Summary (after API call) -->
+      <!-- Transformation Summary -->
       <div *ngIf="hasResult; else waitingCard"
            class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
         <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">
-          Transformation Summary
+          {{ 'di.summary.title' | translate }}
         </h4>
         <div class="flex flex-col gap-md">
           <div class="flex justify-between items-center border-b border-white/10 pb-sm">
-            <span class="text-body-sm text-slate-300">Total input rows</span>
+            <span class="text-body-sm text-slate-300">{{ 'di.summary.total' | translate }}</span>
             <span class="text-label-md text-white">{{ result!.transformation_summary.total_input_rows }}</span>
           </div>
           <div class="flex justify-between items-center border-b border-white/10 pb-sm">
-            <span class="text-body-sm text-slate-300">Valid records</span>
+            <span class="text-body-sm text-slate-300">{{ 'di.summary.valid' | translate }}</span>
             <span class="text-label-md text-teal-400">{{ result!.transformation_summary.valid_rows }}</span>
           </div>
           <div class="flex justify-between items-center border-b border-white/10 pb-sm">
-            <span class="text-body-sm text-slate-300">Skipped rows</span>
+            <span class="text-body-sm text-slate-300">{{ 'di.summary.skipped' | translate }}</span>
             <span class="text-label-md"
                   [ngClass]="result!.transformation_summary.skipped_rows > 0 ? 'text-amber-400' : 'text-teal-400'">
               {{ result!.transformation_summary.skipped_rows }}
             </span>
           </div>
+          <div class="flex justify-between items-center border-b border-white/10 pb-sm">
+            <span class="text-body-sm text-slate-300">{{ 'di.summary.zones' | translate }}</span>
+            <span class="text-label-md text-white">{{ uniqueBerths.length }}</span>
+          </div>
         </div>
-        <!-- Skipped reasons -->
         <div *ngIf="result!.transformation_summary.skipped_reasons.length > 0" class="mt-md">
-          <p class="text-label-sm text-slate-400 uppercase tracking-widest mb-sm">Skip reasons</p>
+          <p class="text-label-sm text-slate-400 uppercase tracking-widest mb-sm">
+            {{ 'di.summary.skip_reasons' | translate }}
+          </p>
           <div class="space-y-xs max-h-32 overflow-y-auto">
             <p *ngFor="let reason of result!.transformation_summary.skipped_reasons"
                class="text-[11px] text-slate-400 leading-tight">• {{ reason }}</p>
@@ -143,37 +150,130 @@
         <button type="button"
                 (click)="goToOptimization()"
                 class="mt-lg w-full py-sm rounded bg-on-secondary-container hover:opacity-90 transition-colors text-label-sm uppercase tracking-widest">
-          Proceed to Optimization →
+          {{ 'di.summary.proceed' | translate }}
         </button>
       </div>
 
-      <!-- Waiting card — no data yet -->
+      <!-- Waiting card -->
       <ng-template #waitingCard>
         <div class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
-          <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">Transformation Summary</h4>
+          <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">
+            {{ 'di.summary.title' | translate }}
+          </h4>
           <div class="flex flex-col items-center justify-center py-lg text-slate-500">
             <span class="material-symbols-outlined text-4xl mb-sm">hourglass_empty</span>
-            <p class="text-body-sm text-center">Upload a file to see the transformation report.</p>
+            <p class="text-body-sm text-center">{{ 'di.summary.waiting' | translate }}</p>
           </div>
         </div>
       </ng-template>
 
-      <!-- Column Validation -->
+      <!-- Optimization Parameters -->
       <div class="bg-white rounded-xl border border-slate-200 p-lg shadow-card">
         <h4 class="text-label-md text-on-surface-variant mb-md uppercase tracking-widest">
-          Output Columns
+          {{ 'di.params.title' | translate }}
         </h4>
-        <div class="space-y-sm">
-          <div *ngFor="let col of columns"
-               class="flex items-center gap-sm p-xs rounded">
-            <span class="material-symbols-outlined text-sm"
-                  [ngClass]="hasResult ? 'text-teal-600' : 'text-slate-300'">
-              {{ hasResult ? 'check_circle' : 'radio_button_unchecked' }}
-            </span>
-            <span class="text-body-sm text-on-surface">{{ col.name }}</span>
+
+        <!-- Pilots & Tugs -->
+        <div class="space-y-md mb-lg">
+          <div>
+            <label class="text-body-sm text-on-surface-variant block mb-xs">
+              {{ 'di.params.pilots' | translate }}
+            </label>
+            <input type="number" min="0"
+                   [(ngModel)]="optimizationParams.num_pilots"
+                   class="w-full border border-slate-200 rounded-lg px-sm py-xs text-body-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition"
+                   placeholder="—">
+          </div>
+          <div>
+            <label class="text-body-sm text-on-surface-variant block mb-xs">
+              {{ 'di.params.tugs' | translate }}
+            </label>
+            <input type="number" min="0"
+                   [(ngModel)]="optimizationParams.num_tugs"
+                   class="w-full border border-slate-200 rounded-lg px-sm py-xs text-body-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition"
+                   placeholder="—">
+          </div>
+        </div>
+
+        <!-- Mooring Zones -->
+        <div>
+          <p class="text-label-sm text-on-surface-variant uppercase tracking-widest mb-sm">
+            {{ 'di.params.zones_title' | translate }}
+          </p>
+
+          <!-- No data yet -->
+          <div *ngIf="!hasResult" class="flex flex-col items-center justify-center py-md text-slate-400">
+            <span class="material-symbols-outlined text-3xl mb-xs">anchor</span>
+            <p class="text-body-sm text-center">{{ 'di.params.zones_empty' | translate }}</p>
+          </div>
+
+          <!-- Zone config cards -->
+          <div *ngIf="hasResult" class="space-y-sm max-h-[420px] overflow-y-auto pr-xs">
+            <div *ngFor="let zone of optimizationParams.mooring_zones"
+                 class="rounded-lg border border-slate-200 bg-slate-50 p-sm">
+
+              <!-- Zone name -->
+              <div class="flex items-center gap-xs mb-xs">
+                <span class="material-symbols-outlined text-teal-600 text-sm flex-shrink-0">anchor</span>
+                <span class="text-body-sm font-medium text-on-surface truncate" [title]="zone.berth_id">
+                  {{ zone.berth_id }}
+                </span>
+              </div>
+
+              <!-- BAP type + value input -->
+              <div class="grid grid-cols-2 gap-xs">
+
+                <!-- BAP type segmented toggle -->
+                <div>
+                  <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">
+                    {{ 'di.params.bap_type' | translate }}
+                  </label>
+                  <div class="flex rounded-md overflow-hidden border border-slate-300">
+                    <button type="button"
+                            (click)="zone.bap_type = 'continuous'"
+                            class="flex-1 py-1 text-[11px] font-medium transition-colors"
+                            [ngClass]="zone.bap_type === 'continuous'
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-white text-slate-600 hover:bg-slate-50'">
+                      {{ 'di.params.continuous' | translate }}
+                    </button>
+                    <button type="button"
+                            (click)="zone.bap_type = 'discrete'"
+                            class="flex-1 py-1 text-[11px] font-medium border-l border-slate-300 transition-colors"
+                            [ngClass]="zone.bap_type === 'discrete'
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-white text-slate-600 hover:bg-slate-50'">
+                      {{ 'di.params.discrete' | translate }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Value input -->
+                <div *ngIf="zone.bap_type === 'continuous'">
+                  <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">
+                    {{ 'di.params.noray_max' | translate }}
+                  </label>
+                  <input type="number" min="1"
+                         [(ngModel)]="zone.noray_max"
+                         class="w-full bg-white border border-slate-300 rounded px-xs py-1 text-data-mono text-sm focus:outline-none focus:border-teal-500 transition"
+                         placeholder="—">
+                </div>
+
+                <div *ngIf="zone.bap_type === 'discrete'">
+                  <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">
+                    {{ 'di.params.capacity' | translate }}
+                  </label>
+                  <input type="number" min="1" max="10"
+                         [(ngModel)]="zone.capacity"
+                         class="w-full bg-white border border-slate-300 rounded px-xs py-1 text-data-mono text-sm focus:outline-none focus:border-teal-500 transition"
+                         placeholder="—">
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
     </div>
   </div>
 </div>

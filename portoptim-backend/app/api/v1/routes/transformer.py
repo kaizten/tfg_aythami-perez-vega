@@ -25,6 +25,7 @@ def _build_response(result: TransformationResult) -> dict[str, Any]:
             "skipped_rows": result.summary.skipped_rows,
             "skipped_reasons": result.summary.skipped_reasons,
         },
+        "available_ports": result.available_ports,
         "data": [call.model_dump(mode="json") for call in result.records],
     }
 
