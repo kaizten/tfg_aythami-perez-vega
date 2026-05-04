@@ -93,6 +93,11 @@ const en: TranslationMap = {
   'dash.map.title':            'Terminal Visual Layout',
   'dash.map.status':           'Operational',
   'dash.map.placeholder':      'Terminal Map — integrate live feed here',
+  'dash.map.search':           'Search port… (e.g. Port of Barcelona)',
+  'dash.map.not_found':        'Not found',
+  'dash.map.legend.underway':  'Under way',
+  'dash.map.legend.anchor':    'At anchor',
+  'dash.map.legend.moored':    'Moored',
   'dash.fab':                  'NEW ASSIGNMENT',
 
   // ── Action alerts ────────────────────────────────────────────────────────
@@ -220,6 +225,11 @@ const es: TranslationMap = {
   'dash.map.title':            'Plano Visual del Terminal',
   'dash.map.status':           'Operativo',
   'dash.map.placeholder':      'Mapa del terminal — integre el feed en directo',
+  'dash.map.search':           'Buscar puerto… (p. ej. Puerto de Barcelona)',
+  'dash.map.not_found':        'No encontrado',
+  'dash.map.legend.underway':  'En marcha',
+  'dash.map.legend.anchor':    'Fondeado',
+  'dash.map.legend.moored':    'Atracado',
   'dash.fab':                  'NUEVA ASIGNACIÓN',
 
   'alerts.title':          'Acción Requerida',
@@ -343,6 +353,11 @@ const de: TranslationMap = {
   'dash.map.title':            'Terminallayout',
   'dash.map.status':           'In Betrieb',
   'dash.map.placeholder':      'Terminalkarte — Live-Feed hier integrieren',
+  'dash.map.search':           'Hafen suchen… (z. B. Hafen von Barcelona)',
+  'dash.map.not_found':        'Nicht gefunden',
+  'dash.map.legend.underway':  'In Fahrt',
+  'dash.map.legend.anchor':    'Vor Anker',
+  'dash.map.legend.moored':    'Festgemacht',
   'dash.fab':                  'NEUE ZUWEISUNG',
 
   'alerts.title':          'Handlung erforderlich',
@@ -466,6 +481,11 @@ const fr: TranslationMap = {
   'dash.map.title':            'Plan visuel du terminal',
   'dash.map.status':           'Opérationnel',
   'dash.map.placeholder':      'Plan du terminal — intégrer le flux en direct',
+  'dash.map.search':           'Rechercher un port… (ex. Port de Barcelone)',
+  'dash.map.not_found':        'Introuvable',
+  'dash.map.legend.underway':  'En route',
+  'dash.map.legend.anchor':    'Au mouillage',
+  'dash.map.legend.moored':    'Amarré',
   'dash.fab':                  'NOUVELLE AFFECTATION',
 
   'alerts.title':          'Action requise',

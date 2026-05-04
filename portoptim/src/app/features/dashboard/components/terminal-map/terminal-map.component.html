@@ -23,6 +23,50 @@
     </div>
   </div>
 
+  <!-- Port search bar -->
+  <div class="relative border-b border-slate-100 bg-slate-50/60">
+    <div class="px-lg py-sm flex items-center gap-sm">
+      <span class="material-symbols-outlined text-slate-400 text-[20px] flex-shrink-0">travel_explore</span>
+      <input #searchInput
+             type="text"
+             [title]="'dash.map.search' | translate"
+             [placeholder]="'dash.map.search' | translate"
+             class="flex-1 bg-transparent text-body-sm text-on-surface placeholder:text-slate-400 outline-none"
+             autocomplete="off"
+             (input)="onSearchInput(searchInput.value)"
+             (keydown.enter)="onEnter(searchInput)"
+             (blur)="closeSuggestions()">
+      <!-- Spinner -->
+      <span *ngIf="searching"
+            class="w-4 h-4 border-2 border-teal-200 border-t-teal-600 rounded-full animate-spin flex-shrink-0">
+      </span>
+      <!-- Not found badge -->
+      <span *ngIf="searchNotFound && !searching"
+            class="text-[11px] font-semibold text-error flex-shrink-0">
+        {{ 'dash.map.not_found' | translate }}
+      </span>
+      <!-- Clear button -->
+      <button *ngIf="searchInput.value && !searching"
+              type="button"
+              (click)="clearSearch(searchInput)"
+              class="material-symbols-outlined text-slate-400 text-[18px] hover:text-slate-600 transition-colors flex-shrink-0 leading-none">
+        close
+      </button>
+    </div>
+
+    <!-- Autocomplete dropdown -->
+    <div *ngIf="showSuggestions && suggestions.length > 0"
+         class="absolute left-0 right-0 top-full z-[1100] bg-white border border-slate-200 shadow-lg rounded-b-lg max-h-[220px] overflow-y-auto">
+      <button *ngFor="let s of suggestions"
+              type="button"
+              (mousedown)="selectSuggestion(s, searchInput)"
+              class="w-full text-left px-lg py-sm hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0 flex flex-col gap-0.5">
+        <span class="text-body-sm font-medium text-on-surface truncate">{{ suggestionName(s) }}</span>
+        <span class="text-[11px] text-slate-400 truncate">{{ suggestionSub(s) }}</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Map area — explicit height so Leaflet always has concrete dimensions at init -->
   <div class="relative h-[440px] overflow-hidden">
 
@@ -33,15 +77,15 @@
     <div class="absolute bottom-3 left-3 z-[1001] bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-md px-3 py-2 space-y-1 pointer-events-none select-none">
       <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
         <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></span>
-        Under way
+        {{ 'dash.map.legend.underway' | translate }}
       </div>
       <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
         <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0"></span>
-        At anchor
+        {{ 'dash.map.legend.anchor' | translate }}
       </div>
       <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
         <span class="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>
-        Moored
+        {{ 'dash.map.legend.moored' | translate }}
       </div>
     </div>
   </div>

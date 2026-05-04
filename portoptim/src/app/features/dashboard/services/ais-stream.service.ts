@@ -33,6 +33,15 @@ export class AisStreamService implements OnDestroy {
     this._open();
   }
 
+  sendBbox(swLat: number, swLng: number, neLat: number, neLng: number): void {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'bbox',
+        bbox: [[[swLat, swLng], [neLat, neLng]]],
+      }));
+    }
+  }
+
   disconnect(): void {
     this.stopped = true;
     if (this.reconnectTimer !== null) {
@@ -63,17 +72,18 @@ export class AisStreamService implements OnDestroy {
         if (msg.MessageType !== 'PositionReport') return;
         const meta = msg.MetaData ?? {};
         const pr   = msg.Message?.PositionReport ?? {};
+        const heading = pr.TrueHeading;
         this._positions$.next({
           mmsi:      meta.MMSI,
           shipName:  String(meta.ShipName ?? 'Unknown').trim(),
           latitude:  meta.latitude,
           longitude: meta.longitude,
-          sog:       pr.Sog       ?? null,
-          heading:   pr.TrueHeading        ?? null,
+          sog:       pr.Sog ?? null,
+          heading:   (heading != null && heading !== 511) ? heading : null,
           navStatus: pr.NavigationalStatus ?? null,
           timeUtc:   meta.time_utc ?? '',
         });
-      } catch { /* ignore malformed messages */ }
+      } catch { /* ignore malformed */ }
     };
 
     this.socket.onclose = () => {

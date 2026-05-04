@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
 import * as L from 'leaflet';
-import { Subscription, interval } from 'rxjs';
+import { Subject, Subscription, debounceTime, distinctUntilChanged, interval } from 'rxjs';
 import { AisStreamService, AisVesselPosition } from '../../services/ais-stream.service';
 
 const NAV_LABELS: Record<number, string> = {
@@ -18,10 +18,10 @@ const NAV_LABELS: Record<number, string> = {
 
 function vesselColor(status: number | null): string {
   switch (status) {
-    case 0: case 8: return '#22c55e'; // green:  under way
-    case 1:         return '#eab308'; // yellow: at anchor
-    case 5:         return '#3b82f6'; // blue:   moored
-    default:        return '#94a3b8'; // gray:   other / unknown
+    case 0: case 8: return '#22c55e';
+    case 1:         return '#eab308';
+    case 5:         return '#3b82f6';
+    default:        return '#94a3b8';
   }
 }
 
@@ -36,9 +36,15 @@ function buildIcon(heading: number | null, navStatus: number | null): L.DivIcon 
   return L.divIcon({ className: '', html: svg, iconSize: [20, 20], iconAnchor: [10, 10] });
 }
 
-interface VesselTrack { marker: L.Marker; lastSeen: number; }
+interface VesselTrack { marker: L.Marker; lastSeen: number; latlng: L.LatLng; }
+const STALE_MS = 10 * 60 * 1_000;
 
-const STALE_MS = 10 * 60 * 1_000; // 10 minutes
+export interface NominatimResult {
+  lat: string;
+  lon: string;
+  display_name: string;
+  name?: string;
+}
 
 @Component({
   selector: 'app-terminal-map',
@@ -50,9 +56,18 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
   @ViewChild('mapEl') private mapEl!: ElementRef<HTMLDivElement>;
 
   private map!: L.Map;
-  private vessels = new Map<number, VesselTrack>();
-  private subs = new Subscription();
+  private vessels         = new Map<number, VesselTrack>();
+  private positionBuffer  = new Map<number, AisVesselPosition>();
+  private subs            = new Subscription();
   private resizeObserver!: ResizeObserver;
+  private readonly searchSubject = new Subject<string>();
+  private readonly bboxSubject   = new Subject<void>();
+
+  // Search state
+  suggestions: NominatimResult[] = [];
+  showSuggestions = false;
+  searching       = false;
+  searchNotFound  = false;
 
   constructor(readonly ais: AisStreamService) {}
 
@@ -60,13 +75,12 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     const el = this.mapEl.nativeElement;
 
     this.map = L.map(el, {
-      center: [28.134, -15.425],  // Puerto de La Luz, Las Palmas de Gran Canaria
+      center: [28.134, -15.425],
       zoom: 14,
       zoomControl: true,
-      preferCanvas: true,         // renders markers on <canvas> — faster for many vessels
+      preferCanvas: true,
     });
 
-    // Satellite base — Esri World Imagery (free, fast CDN, no API key)
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
@@ -78,29 +92,41 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
       }
     ).addTo(this.map);
 
-    // Labels overlay — street / place names on top of satellite
     const labelsPane = this.map.createPane('labels');
-    labelsPane.style.zIndex = '450';
+    labelsPane.style.zIndex    = '450';
     labelsPane.style.pointerEvents = 'none';
     L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
-      {
-        pane: 'labels',
-        subdomains: 'abcd',
-        maxZoom: 19,
-        opacity: 0.85,
-        updateWhenIdle: false,
-        updateWhenZooming: false,
-      }
+      { pane: 'labels', subdomains: 'abcd', maxZoom: 19, opacity: 0.85,
+        updateWhenIdle: false, updateWhenZooming: false }
     ).addTo(this.map);
 
-    // ResizeObserver: tells Leaflet the real container size whenever it changes.
-    // Much more reliable than a setTimeout — fires after the browser has actually painted.
     this.resizeObserver = new ResizeObserver(() => this.map.invalidateSize());
     this.resizeObserver.observe(el);
 
+    this.map.on('moveend', () => this.onMapMoved());
+
+    // Send bbox to backend only after user stops moving for 1 s
+    this.subs.add(
+      this.bboxSubject.pipe(debounceTime(1000))
+        .subscribe(() => {
+          const b  = this.map.getBounds();
+          const sw = b.getSouthWest();
+          const ne = b.getNorthEast();
+          this.ais.sendBbox(sw.lat, sw.lng, ne.lat, ne.lng);
+        })
+    );
+
+    // Debounced autocomplete — 350 ms after the user stops typing
+    this.subs.add(
+      this.searchSubject.pipe(debounceTime(350), distinctUntilChanged())
+        .subscribe(q => this.fetchSuggestions(q))
+    );
+
     this.ais.connect();
-    this.subs.add(this.ais.positions$.subscribe(p => this.onPosition(p)));
+    // Buffer incoming positions; flush to map every 20 s
+    this.subs.add(this.ais.positions$.subscribe(p => this.positionBuffer.set(p.mmsi, p)));
+    this.subs.add(interval(20_000).subscribe(() => this.flushBuffer()));
     this.subs.add(interval(60_000).subscribe(() => this.purgeStale()));
   }
 
@@ -111,20 +137,117 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.map?.remove();
   }
 
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  onSearchInput(value: string): void {
+    this.searchNotFound = false;
+    const q = value.trim();
+    if (q.length < 2) {
+      this.suggestions    = [];
+      this.showSuggestions = false;
+      return;
+    }
+    this.searchSubject.next(q);
+  }
+
+  onEnter(input: HTMLInputElement): void {
+    if (this.suggestions.length > 0) {
+      this.selectSuggestion(this.suggestions[0], input);
+    } else {
+      void this.searchFallback(input.value, input);
+    }
+  }
+
+  selectSuggestion(result: NominatimResult, input: HTMLInputElement): void {
+    this.map.flyTo([parseFloat(result.lat), parseFloat(result.lon)], 14, { duration: 1.2 });
+    input.value          = this.suggestionName(result);
+    this.showSuggestions = false;
+    this.suggestions     = [];
+  }
+
+  clearSearch(input: HTMLInputElement): void {
+    input.value          = '';
+    this.suggestions     = [];
+    this.showSuggestions = false;
+    this.searchNotFound  = false;
+  }
+
+  closeSuggestions(): void {
+    // Slight delay so a click on a suggestion fires before the dropdown disappears
+    setTimeout(() => { this.showSuggestions = false; }, 150);
+  }
+
+  suggestionName(r: NominatimResult): string {
+    return r.name?.trim() || r.display_name.split(',')[0].trim();
+  }
+
+  suggestionSub(r: NominatimResult): string {
+    return r.display_name.split(',').slice(1, 4).join(', ').trim();
+  }
+
+  private async fetchSuggestions(query: string): Promise<void> {
+    this.searching = true;
+    try {
+      const url  = `https://nominatim.openstreetmap.org/search`
+                 + `?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=0`;
+      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json() as NominatimResult[];
+      this.suggestions     = data;
+      this.showSuggestions = data.length > 0;
+    } catch {
+      this.suggestions     = [];
+      this.showSuggestions = false;
+    } finally {
+      this.searching = false;
+    }
+  }
+
+  private async searchFallback(query: string, input: HTMLInputElement): Promise<void> {
+    const q = query.trim();
+    if (!q || this.searching) return;
+
+    this.searching      = true;
+    this.searchNotFound = false;
+    this.showSuggestions = false;
+
+    try {
+      const url  = `https://nominatim.openstreetmap.org/search`
+                 + `?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0`;
+      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json() as NominatimResult[];
+
+      if (data.length > 0) {
+        this.map.flyTo([parseFloat(data[0].lat), parseFloat(data[0].lon)], 14, { duration: 1.2 });
+        input.value = this.suggestionName(data[0]);
+      } else {
+        this.searchNotFound = true;
+        setTimeout(() => (this.searchNotFound = false), 3000);
+      }
+    } catch {
+      this.searchNotFound = true;
+      setTimeout(() => (this.searchNotFound = false), 3000);
+    } finally {
+      this.searching = false;
+    }
+  }
+
+  // ── AIS ───────────────────────────────────────────────────────────────────
+
   private onPosition(pos: AisVesselPosition): void {
-    const latlng: L.LatLngExpression = [pos.latitude, pos.longitude];
-    const icon    = buildIcon(pos.heading, pos.navStatus);
+    const latlng   = L.latLng(pos.latitude, pos.longitude);
+    const icon     = buildIcon(pos.heading, pos.navStatus);
     const existing = this.vessels.get(pos.mmsi);
 
     if (existing) {
       existing.marker.setLatLng(latlng).setIcon(icon);
       existing.marker.getPopup()?.setContent(this.popupHtml(pos));
       existing.lastSeen = Date.now();
+      existing.latlng   = latlng;
     } else {
       const marker = L.marker(latlng, { icon })
         .bindPopup(this.popupHtml(pos))
         .addTo(this.map);
-      this.vessels.set(pos.mmsi, { marker, lastSeen: Date.now() });
+      this.vessels.set(pos.mmsi, { marker, lastSeen: Date.now(), latlng });
     }
   }
 
@@ -138,6 +261,34 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
         <span style="color:#64748b">HDG</span> ${pos.heading !== null ? pos.heading + '°' : '—'}<br>
         <span style="color:#64748b">Status</span> ${status}
       </div>`;
+  }
+
+  private onMapMoved(): void {
+    this.removeOutOfBoundsVessels(this.map.getBounds());
+    this.bboxSubject.next();
+  }
+
+  private removeOutOfBoundsVessels(bounds: L.LatLngBounds): void {
+    for (const [mmsi, track] of this.vessels) {
+      if (!bounds.contains(track.latlng)) {
+        track.marker.remove();
+        this.vessels.delete(mmsi);
+        this.positionBuffer.delete(mmsi);
+      }
+    }
+  }
+
+  private flushBuffer(): void {
+    for (const pos of this.positionBuffer.values()) {
+      this.onPosition(pos);
+    }
+    this.positionBuffer.clear();
+  }
+
+  private clearVessels(): void {
+    for (const track of this.vessels.values()) track.marker.remove();
+    this.vessels.clear();
+    this.positionBuffer.clear();
   }
 
   private purgeStale(): void {
