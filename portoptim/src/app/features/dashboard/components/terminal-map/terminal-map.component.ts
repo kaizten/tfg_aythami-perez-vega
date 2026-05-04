@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
 import * as L from 'leaflet';
-import { Subject, Subscription, debounceTime, distinctUntilChanged, interval } from 'rxjs';
+import { Subject, Subscription, debounceTime, distinctUntilChanged, interval, take } from 'rxjs';
 import { AisStreamService, AisVesselPosition } from '../../services/ais-stream.service';
 
 const NAV_LABELS: Record<number, string> = {
@@ -106,7 +106,8 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('moveend', () => this.onMapMoved());
 
-    // Send bbox to backend only after user stops moving for 1 s
+    // Send bbox to backend only after user stops moving for 1 s,
+    // then schedule a quick flush 4 s later so new-area vessels appear fast
     this.subs.add(
       this.bboxSubject.pipe(debounceTime(1000))
         .subscribe(() => {
@@ -114,6 +115,8 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
           const sw = b.getSouthWest();
           const ne = b.getNorthEast();
           this.ais.sendBbox(sw.lat, sw.lng, ne.lat, ne.lng);
+          // 1 s (backend reconnect) + 3 s (collect positions) = first vessels in ~4 s
+          this.subs.add(interval(4_000).pipe(take(1)).subscribe(() => this.flushBuffer()));
         })
     );
 
@@ -124,8 +127,9 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     );
 
     this.ais.connect();
-    // Buffer incoming positions; flush to map every 20 s
+    // Buffer incoming positions; first flush after 3 s, then every 20 s
     this.subs.add(this.ais.positions$.subscribe(p => this.positionBuffer.set(p.mmsi, p)));
+    this.subs.add(interval(3_000).pipe(take(1)).subscribe(() => this.flushBuffer()));
     this.subs.add(interval(20_000).subscribe(() => this.flushBuffer()));
     this.subs.add(interval(60_000).subscribe(() => this.purgeStale()));
   }
