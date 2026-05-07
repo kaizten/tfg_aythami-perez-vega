@@ -21,7 +21,7 @@ from typing import Optional
 
 import structlog
 
-from .models import AssignmentResult, BerthZone, VesselInput, norays_needed
+from .models import AssignmentResult, BerthZone, VesselInput, build_phases, norays_needed
 from .scheduler import ContinuousBerthState, DiscreteBerthState, make_berth_state
 
 logger = structlog.get_logger()
@@ -251,6 +251,15 @@ class LocalSearch:
         for v, (wait_h, ns, ne, t_start) in zip(vessel_order, waits):
             orig = orig_map[v.id]
             dur_h = orig.duration_estimated_h
+            t_end = t_start + timedelta(hours=dur_h)
+            vessel_phases = build_phases(
+                eta=v.eta,
+                scheduled_start=t_start,
+                scheduled_end=t_end,
+                waiting_time_h=wait_h,
+                duration_estimated_h=dur_h,
+                maneuver_h=orig.maneuver_h,
+            )
             new_results.append(
                 AssignmentResult(
                     vessel_id=v.id,
@@ -258,7 +267,7 @@ class LocalSearch:
                     noray_start=ns,
                     noray_end=ne,
                     scheduled_start=t_start,
-                    scheduled_end=t_start + timedelta(hours=dur_h),
+                    scheduled_end=t_end,
                     waiting_time_h=wait_h,
                     duration_estimated_h=dur_h,
                     duration_source=orig.duration_source,
@@ -269,6 +278,8 @@ class LocalSearch:
                     pilot_caused_delay=orig.pilot_caused_delay,
                     tug_caused_delay=orig.tug_caused_delay,
                     caused_delay_to=[],  # recomputed by optimizer after all LS rounds
+                    maneuver_h=orig.maneuver_h,
+                    phases=vessel_phases,
                 )
             )
         return new_results

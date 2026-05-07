@@ -28,8 +28,10 @@ from .duration import DurationEstimator
 from .models import (
     AssignmentResult,
     BerthZone,
+    OperationPhase,
     VesselInput,
     DOCKING_DURATION_H,
+    build_phases,
     norays_needed,
     required_tugs,
 )
@@ -356,6 +358,15 @@ class Scheduler:
                     tugs_required=n_tugs,
                 )
 
+                vessel_phases = build_phases(
+                    eta=v.eta,
+                    scheduled_start=t_start,
+                    scheduled_end=t_end,
+                    waiting_time_h=wait_h,
+                    duration_estimated_h=dur_h,
+                    maneuver_h=maneuver_h,
+                )
+
                 results.append(
                     AssignmentResult(
                         vessel_id=v.id,
@@ -374,6 +385,8 @@ class Scheduler:
                         pilot_caused_delay=pilot_caused,
                         tug_caused_delay=tug_caused,
                         caused_delay_to=[],
+                        maneuver_h=maneuver_h,
+                        phases=vessel_phases,
                     )
                 )
 

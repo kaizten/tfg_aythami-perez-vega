@@ -138,15 +138,18 @@ Vessels are partitioned by ETA date and optimised one day at a time.  Berth stat
 
 ### Phase 1 — Calibration (optional)
 
-`Calibration(csv_path=None)` learns statistical duration models from a historical CSV.  Three generic models are built — no berth names are ever stored:
+`Calibration(csv_path=None)` learns statistical duration models from a historical CSV.  Four generic models are built — no berth names are ever stored:
 
 | Model | Key | Description |
 |---|---|---|
 | `rate_model` | `(tipo_operacion, grupo_mercancia)` | Median t/h (used when `cantidad` is known) |
 | `duration_model` | `(tipo_operacion, grupo_mercancia, eslora_bucket)` | Median duration in hours (≥ 5 observations required) |
 | `overlap_factor_learned` | — | Ratio actual / sum-of-individual for multi-operation port calls |
+| `maneuver_model` | `(eslora_bucket, hazardous: bool)` | Median single-manoeuvre duration (h) for docking / undocking |
 
 Eslora buckets: `<80 m`, `80–150 m`, `150–220 m`, `>220 m`.
+
+The `maneuver_model` is fitted using a statistical proxy: `0.08 × eslora / 10` hours base (≈ 5 min per 10 m of vessel length) plus `+0.3 h` for hazardous cargo (`Energético` / `Químicos`).  Cells with fewer than 5 observations fall back to `0.5 + 0.3 × hazardous` hours.  Query via `get_maneuver_duration(eslora, grupo_mercancia)`.
 
 ### Phase 2 — Greedy scheduling
 
@@ -163,7 +166,7 @@ Within each berth, vessels are sorted by **GT descending** (higher gross tonnage
 
 #### Pilot rule
 
-Exactly **1 pilot** is required per vessel per manoeuvre — one event at docking, one at undocking.  A pilot is occupied for **1 h** per manoeuvre and then returns to the pool.  If no pilot is free when the vessel is ready to dock, the scheduled start is pushed forward until one becomes available.
+Exactly **1 pilot** is required per vessel per manoeuvre — one event at docking, one at undocking.  A pilot is occupied for the duration returned by `estimate_maneuver_duration(eslora, cargo_group, calibration)` per manoeuvre and then returns to the pool.  If no pilot is free when the vessel is ready to dock, the scheduled start is pushed forward until one becomes available.
 
 #### Tug rule
 
@@ -184,7 +187,7 @@ Modifiers applied on top of the base value:
 | `cargo_group` is `"Energético"` or `"Químicos"` (hazardous) | +1 tug |
 | `has_bow_thruster = True` | −1 tug (minimum 0) |
 
-The result is always in **[0, 4]**.  Tugs are consumed only during the docking manoeuvre (~1 h) and the undocking manoeuvre (~1 h), **not** during the full berth stay.  If fewer tugs are available than required, the vessel waits.
+The result is always in **[0, 4]**.  Tugs are consumed only during the docking manoeuvre and the undocking manoeuvre (duration from `estimate_maneuver_duration`), **not** during the full berth stay.  If fewer tugs are available than required, the vessel waits.
 
 #### Resource pool model
 
@@ -291,6 +294,20 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
 | `pilot_assigned` | bool | `true` if a pilot was successfully allocated for docking |
 | `tugs_required` | int | Number of tugs required (computed from GT + cargo + bow thruster) |
 | `tugs_assigned` | bool | `true` if all required tugs were allocated |
+| `phases` | list | Four-phase temporal breakdown (see below); empty for unassigned vessels |
+
+##### Operation phases
+
+Each assigned vessel includes a `phases` list with exactly four entries:
+
+| Phase name | Description |
+|---|---|
+| `fondeo` | Waiting at anchor — from ETA to `scheduled_start` |
+| `atraque` | Docking manoeuvre — duration from `maneuver_model` or fallback |
+| `ejecucion` | Cargo operation — between end of docking and start of undocking |
+| `desatraque` | Undocking manoeuvre — same duration as docking, ends at `scheduled_end` |
+
+Each phase object: `{ "name": str, "start": ISO8601, "end": ISO8601, "duration_h": float }`.  Phase timestamps are strictly consecutive (`end[i] == start[i+1]`).  If combined manoeuvre time would leave less than 0.1 h for `ejecucion`, both manoeuvre durations are scaled down proportionally.
 
 | `status` | Meaning |
 |---|---|
@@ -412,7 +429,7 @@ Vessel icons are SVG arrow polygons rotated to `TrueHeading` degrees.  Markers o
 pytest -v
 ```
 
-**74 tests** across eight test modules:
+**85 tests** across ten test modules:
 
 | File | Tests | Coverage |
 |---|---|---|
@@ -424,6 +441,8 @@ pytest -v
 | `test_resources.py` | 15 | `required_tugs` GT table + modifiers, `ResourcePool` interval gaps, multi-unit allocation |
 | `test_local_search.py` | 3 | Never worsens, GT constraint respected |
 | `test_optimizer.py` | 8 | End-to-end: 2 berths, 20 berths, dynamic KPIs, calibration injection |
+| `test_maneuver_duration.py` | 5 | `maneuver_model` lookup, fallbacks (no calibration / missing bucket), end-to-end coherence |
+| `test_phases.py` | 6 | Phase sum invariant, ejecucion never negative, zero-wait fondeo, name order, consecutive timestamps, unassigned empty |
 
 **Performance**: 200 vessels / 100 berths → < 0.1 s (target: < 2 s).
 
@@ -462,8 +481,10 @@ portoptim-backend/
 ├── optimizer/                       ← Scheduling optimisation engine
 │   ├── __init__.py                  Public exports
 │   ├── models.py                    Pydantic I/O models, AssignmentResult dataclass,
+│   │                                OperationPhase dataclass, build_phases(),
 │   │                                required_tugs() business-rule function
-│   ├── calibration.py               Phase 1: rate_model, duration_model, overlap_factor
+│   ├── calibration.py               Phase 1: rate_model, duration_model, overlap_factor,
+│   │                                maneuver_model, get_maneuver_duration()
 │   ├── duration.py                  Three-layer duration estimator
 │   ├── scheduler.py                 Phase 2: greedy scheduler, interval-based ResourcePool,
 │   │                                real pilot / tug resource logic
@@ -484,7 +505,9 @@ portoptim-backend/
         ├── test_scheduler.py
         ├── test_resources.py        required_tugs() + ResourcePool unit tests
         ├── test_local_search.py
-        └── test_optimizer.py
+        ├── test_optimizer.py
+        ├── test_maneuver_duration.py  maneuver_model + estimate_maneuver_duration()
+        └── test_phases.py           OperationPhase / build_phases() + end-to-end phases
 ```
 
 ---

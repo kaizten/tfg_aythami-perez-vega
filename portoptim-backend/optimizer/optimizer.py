@@ -267,4 +267,13 @@ def _to_dict(a: AssignmentResult) -> dict:
         "tugs_assigned": a.tugs_assigned,
         "status": a.status,
         "caused_delay_to": a.caused_delay_to,
+        "phases": [
+            {
+                "name": p.name,
+                "start": p.start.isoformat(),
+                "end": p.end.isoformat(),
+                "duration_h": round(p.duration_h, 2),
+            }
+            for p in a.phases
+        ],
     }
