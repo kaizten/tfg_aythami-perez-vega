@@ -14,6 +14,14 @@ export interface VesselDetail {
   eta: string;
   etd: string;
   cargo: { icon: string; type: string; quantity: string; unit: string }[];
+  // Optimizer-specific fields (only present when panel is opened from optimizer view)
+  waitingTime?: string;
+  durationEstimated?: string;
+  durationSource?: string;
+  pilotAssigned?: boolean;
+  tugsRequired?: number;
+  tugsAssigned?: boolean;
+  optimizerStatus?: string;
 }
 
 @Component({

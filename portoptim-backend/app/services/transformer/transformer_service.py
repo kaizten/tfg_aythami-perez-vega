@@ -8,7 +8,7 @@ import pandas as pd
 from pydantic import ValidationError
 
 from app.models.berth_call import BerthCall
-from app.services.transformer.cleaner import clean
+from app.services.transformer.cleaner import clean, merge_concurrent_operations
 from app.services.transformer.normalizer import normalize
 from app.services.transformer.validator import (
     CRITICAL_FIELDS,
@@ -158,6 +158,13 @@ def run_pipeline(df: pd.DataFrame) -> TransformationResult:
 
     # Stage 4 — normalization
     df = normalize(df)
+
+    # Stage 4.5 — merge concurrent operations (same vessel, berth, and time window)
+    df, merged_away = merge_concurrent_operations(df)
+    if merged_away:
+        msg = f"Merged {merged_away} rows with concurrent operations into combined operation types."
+        logger.info(msg)
+        summary.skipped_reasons.append(msg)
 
     # Stage 5 — row-level model construction
     records: list[BerthCall] = []

@@ -19,6 +19,9 @@ STRING_COLUMNS: list[str] = [
 # Subset of columns used to detect duplicate records.
 DEDUP_SUBSET: list[str] = ["call_id", "operation_type"]
 
+# Key used to identify concurrent operations of the same vessel at the same berth.
+CONCURRENT_KEY: list[str] = ["call_id", "berth_id", "arrival_time", "departure_time"]
+
 
 @dataclass
 class CleaningReport:
@@ -78,3 +81,71 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, CleaningReport]:
     report.rows_after = len(df)
 
     return df, report
+
+
+def merge_concurrent_operations(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """
+    Collapse rows where the same vessel performs multiple operations at the same
+    berth during the exact same time window (identical call_id, berth_id,
+    arrival_time and departure_time) into a single row.
+
+    The merged row keeps first-row values for all vessel/berth fields and:
+      - operation_type: joined with " y " in occurrence order (e.g. "Embarque y Trasbordo").
+      - cargo_group / cargo_nature: distinct values joined with " / ".
+      - quantity: sum of all rows (NaN when all are NaN).
+
+    This step must run **after** normalization so that operation_type values
+    are already in their canonical form (Embarque, Desembarque, Trasbordo).
+
+    Args:
+        df: Normalised DataFrame from the normalization step.
+
+    Returns:
+        Tuple of (merged DataFrame, number of rows removed by merging).
+    """
+    group_sizes = df.groupby(CONCURRENT_KEY, sort=False).size()
+    if (group_sizes > 1).sum() == 0:
+        return df, 0
+
+    merged_rows: list[pd.Series] = []
+    rows_removed = 0
+
+    for _, group in df.groupby(CONCURRENT_KEY, sort=False):
+        if len(group) == 1:
+            merged_rows.append(group.iloc[0])
+            continue
+
+        base = group.iloc[0].copy()
+
+        # Combine operation types in occurrence order, no duplicates.
+        seen: set[str] = set()
+        op_parts: list[str] = []
+        for op in group["operation_type"]:
+            if op not in seen:
+                seen.add(op)
+                op_parts.append(op)
+        base["operation_type"] = " y ".join(op_parts)
+
+        # Combine cargo fields — join distinct non-empty values.
+        for col in ("cargo_group", "cargo_nature"):
+            if col in group.columns:
+                distinct = [
+                    v for v in dict.fromkeys(group[col].tolist()) if v  # preserve order, skip ""
+                ]
+                base[col] = " / ".join(distinct) if distinct else ""
+
+        # Sum quantity across the concurrent rows.
+        if "quantity" in group.columns:
+            base["quantity"] = group["quantity"].sum(min_count=1)
+
+        merged_rows.append(base)
+        rows_removed += len(group) - 1
+        logger.info(
+            "Merged %d concurrent operations for call_id=%r into '%s'.",
+            len(group),
+            base["call_id"],
+            base["operation_type"],
+        )
+
+    result = pd.DataFrame(merged_rows).reset_index(drop=True)
+    return result, rows_removed

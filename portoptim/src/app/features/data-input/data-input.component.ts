@@ -49,6 +49,8 @@ export class DataInputComponent implements OnDestroy {
   result: TransformApiResponse | null = null;
 
   optimizationParams: OptimizationParams = { num_pilots: null, num_tugs: null, mooring_zones: [] };
+  /** True once the user has clicked "Proceed" at least once — enables inline error hints. */
+  submitted = false;
 
   private sub?: Subscription;
 
@@ -73,6 +75,30 @@ export class DataInputComponent implements OnDestroy {
   get hasResult(): boolean { return this.result !== null; }
   get previewRows(): BerthCall[] { return this.result?.data.slice(0, 10) ?? []; }
   get uniqueBerths(): string[] { return this.result ? uniqueOrdered(this.result.data) : []; }
+
+  /** Returns a list of human-readable validation errors for the params form. */
+  get paramErrors(): string[] {
+    const errors: string[] = [];
+    const p = this.optimizationParams;
+
+    if (p.num_pilots === null || p.num_pilots === undefined || (p.num_pilots as unknown as string) === '' || p.num_pilots < 1) {
+      errors.push(this.lang.t('di.params.err.pilots'));
+    }
+    if (p.num_tugs === null || p.num_tugs === undefined || (p.num_tugs as unknown as string) === '' || p.num_tugs < 1) {
+      errors.push(this.lang.t('di.params.err.tugs'));
+    }
+    for (const zone of p.mooring_zones) {
+      if (zone.bap_type === 'continuous' && (zone.noray_max === null || zone.noray_max === undefined || zone.noray_max < 1)) {
+        errors.push(`${this.lang.t('di.params.err.zone_noray')} "${zone.berth_id}"`);
+      }
+      if (zone.bap_type === 'discrete' && (zone.capacity === null || zone.capacity === undefined || zone.capacity < 1)) {
+        errors.push(`${this.lang.t('di.params.err.zone_capacity')} "${zone.berth_id}"`);
+      }
+    }
+    return errors;
+  }
+
+  get paramsValid(): boolean { return this.paramErrors.length === 0; }
 
   // ── Formatting ────────────────────────────────────────────────────────────
 
@@ -122,6 +148,8 @@ export class DataInputComponent implements OnDestroy {
 
   goToOptimization(): void {
     if (!this.result) return;
+    this.submitted = true;
+    if (!this.paramsValid) return;
     this.paramsStore.set(this.optimizationParams);
     this.router.navigate(['/optimization']);
   }

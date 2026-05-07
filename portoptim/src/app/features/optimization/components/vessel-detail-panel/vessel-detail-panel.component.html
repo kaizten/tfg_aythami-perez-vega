@@ -108,6 +108,61 @@
           </div>
         </div>
       </section>
+
+      <!-- Optimizer schedule section (only when opened from optimizer view) -->
+      <section *ngIf="vessel?.optimizerStatus">
+        <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
+          <span class="material-symbols-outlined text-teal-600">schedule</span>
+          {{ 'opt.detail.schedule_title' | translate }}
+        </h3>
+        <div class="grid grid-cols-2 gap-md bg-surface-bright p-md rounded-xl border border-outline-variant">
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.wait' | translate }}</p>
+            <p class="text-body-sm font-semibold"
+               [ngClass]="vessel?.waitingTime === '0.00 h' ? 'text-teal-600' : 'text-amber-500'">
+              {{ vessel?.waitingTime }}
+            </p>
+          </div>
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.duration' | translate }}</p>
+            <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.durationEstimated }}</p>
+          </div>
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.source' | translate }}</p>
+            <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.durationSource }}</p>
+          </div>
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.status' | translate }}</p>
+            <span class="px-sm py-xs rounded text-label-sm font-semibold"
+                  [ngClass]="{
+                    'bg-teal-100 text-teal-700': vessel?.optimizerStatus === 'assigned',
+                    'bg-amber-100 text-amber-700': vessel?.optimizerStatus === 'unassigned',
+                    'bg-red-100 text-red-700': vessel?.optimizerStatus === 'invalid_berth'
+                  }">
+              {{ vessel?.optimizerStatus }}
+            </span>
+          </div>
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.pilot' | translate }}</p>
+            <span class="material-symbols-outlined text-xl"
+                  [ngClass]="vessel?.pilotAssigned ? 'text-teal-600' : 'text-slate-400'">
+              {{ vessel?.pilotAssigned ? 'check_circle' : 'cancel' }}
+            </span>
+          </div>
+          <div>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.tug' | translate }}</p>
+            <div class="flex items-center gap-xs">
+              <span class="material-symbols-outlined text-xl"
+                    [ngClass]="vessel?.tugsRequired === 0 ? 'text-slate-300' : vessel?.tugsAssigned ? 'text-teal-600' : 'text-slate-400'">
+                {{ vessel?.tugsRequired === 0 ? 'do_not_disturb_on' : vessel?.tugsAssigned ? 'check_circle' : 'cancel' }}
+              </span>
+              <span class="text-body-sm font-semibold text-on-surface-variant">
+                {{ vessel?.tugsRequired }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- Footer actions -->

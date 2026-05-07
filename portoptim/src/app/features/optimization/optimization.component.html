@@ -1,6 +1,6 @@
 <div class="p-margin bg-background">
 
-  <!-- Empty state — no data uploaded yet -->
+  <!-- ── Empty state ─────────────────────────────────────────────────────── -->
   <div *ngIf="!hasData" class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-lg">
     <div class="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
       <span class="material-symbols-outlined text-4xl text-on-surface-variant">upload_file</span>
@@ -16,14 +16,17 @@
     </div>
   </div>
 
-  <!-- Loaded state -->
+  <!-- ── Loaded state ────────────────────────────────────────────────────── -->
   <ng-container *ngIf="hasData">
+
     <!-- Header -->
     <div class="flex justify-between items-end mb-xl">
       <div>
-        <h3 class="text-h1 font-bold text-on-surface">{{ 'opt.title' | translate }}</h3>
+        <h3 class="text-h1 font-bold text-on-surface">
+          {{ optimizerResult ? ('opt.results.title' | translate) : ('opt.title' | translate) }}
+        </h3>
         <p class="text-body-md text-on-surface-variant mt-xs">
-          {{ kpis[0].value }} {{ 'opt.records' | translate }} {{ kpis[1].value }} {{ 'opt.berths' | translate }}
+          {{ kpis[0].value }} · {{ kpis[1].value }}
         </p>
       </div>
       <div class="flex gap-md">
@@ -32,7 +35,58 @@
           <span class="material-symbols-outlined">refresh</span>
           {{ 'opt.new_dataset' | translate }}
         </a>
+        <button type="button" *ngIf="optimizerResult" (click)="resetOptimizer()"
+                class="flex items-center gap-sm px-lg py-md border border-slate-200 text-on-surface rounded-lg hover:bg-white transition-colors text-label-md">
+          <span class="material-symbols-outlined">replay</span>
+          {{ 'opt.rerun' | translate }}
+        </button>
+        <button type="button" *ngIf="!optimizerResult" (click)="runOptimization()" [disabled]="!canRunOptimizer"
+                class="flex items-center gap-sm px-lg py-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md text-label-md disabled:opacity-40 disabled:cursor-not-allowed">
+          <span class="material-symbols-outlined" [class.animate-spin]="isRunning">
+            {{ isRunning ? 'sync' : 'play_arrow' }}
+          </span>
+          {{ isRunning ? ('opt.running' | translate) : ('opt.run_btn' | translate) }}
+        </button>
       </div>
+    </div>
+
+    <!-- Params incomplete banner -->
+    <div *ngIf="!optimizerResult && !isRunning && paramsValidationErrors.length > 0"
+         class="mb-xl bg-amber-50 border border-amber-200 rounded-xl px-lg py-md flex items-start gap-md">
+      <span class="material-symbols-outlined text-amber-500 mt-0.5 flex-shrink-0">warning</span>
+      <div class="flex-1">
+        <p class="text-label-md text-amber-800 font-semibold">{{ 'di.params.err.title' | translate }}</p>
+        <ul class="mt-xs space-y-xs">
+          <li *ngFor="let e of paramsValidationErrors"
+              class="text-body-sm text-amber-700 flex items-center gap-xs">
+            <span class="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0"></span>
+            {{ e }}
+          </li>
+        </ul>
+      </div>
+      <a routerLink="/data-input"
+         class="flex-shrink-0 flex items-center gap-xs px-md py-xs rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors text-label-sm">
+        <span class="material-symbols-outlined text-sm">edit_square</span>
+        {{ 'opt.params_err.fix_link' | translate }}
+      </a>
+    </div>
+
+    <!-- Error banner -->
+    <div *ngIf="optimizerError"
+         class="mb-xl bg-red-50 border border-red-200 rounded-xl px-lg py-md flex items-start gap-md">
+      <span class="material-symbols-outlined text-red-500 mt-0.5">error</span>
+      <div class="flex-1">
+        <p class="text-label-md text-red-700 font-semibold">{{ 'opt.error' | translate }}</p>
+        <p class="text-body-sm text-red-600 mt-xs">{{ optimizerError }}</p>
+      </div>
+      <button type="button" (click)="optimizerError = null"
+              class="material-symbols-outlined text-red-400 hover:text-red-600">close</button>
+    </div>
+
+    <!-- Loading overlay -->
+    <div *ngIf="isRunning" class="mb-xl flex flex-col items-center gap-md py-xl text-on-surface-variant">
+      <span class="material-symbols-outlined text-5xl animate-spin text-teal-500">settings</span>
+      <p class="text-body-md">{{ 'opt.running_msg' | translate }}</p>
     </div>
 
     <!-- KPI Cards -->
@@ -40,7 +94,9 @@
       <div *ngFor="let kpi of kpis"
            class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
         <div class="flex items-start justify-between">
-          <p class="text-label-sm text-on-surface-variant uppercase tracking-wider">{{ kpi.label }}</p>
+          <p class="text-label-sm text-on-surface-variant uppercase tracking-wider">
+            {{ kpi.label | translate }}
+          </p>
           <span class="material-symbols-outlined" [ngClass]="kpi.positive ? 'text-teal-600' : 'text-amber-500'">
             {{ kpi.icon }}
           </span>
@@ -48,53 +104,141 @@
         <div class="mt-md">
           <p class="text-h1 font-bold text-on-surface">{{ kpi.value }}</p>
           <p class="text-body-sm mt-xs" [ngClass]="kpi.positive ? 'text-teal-600' : 'text-amber-500'">
-            {{ kpi.change }}
+            {{ kpi.sub | translate }}
           </p>
         </div>
       </div>
     </div>
 
-    <!-- Gantt Chart -->
+    <!-- ── Optimizer extras (berth utilization + duration source) ────────── -->
+    <ng-container *ngIf="optimizerResult && !isRunning">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-lg mb-xl">
+
+        <!-- Berth utilization bars -->
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 p-lg">
+          <h4 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-sm">
+            <span class="material-symbols-outlined text-teal-600">dock</span>
+            {{ 'opt.kpi.utilization' | translate }}
+          </h4>
+          <div class="space-y-sm max-h-52 overflow-y-auto">
+            <div *ngFor="let u of utilizationEntries" class="flex items-center gap-md">
+              <span class="text-body-sm text-on-surface-variant w-32 truncate flex-shrink-0 text-right pr-sm">
+                {{ u.berth }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="bg-teal-500 h-2 rounded-full transition-all"
+                     [style.width]="u.pct + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-10 text-right">
+                {{ u.pct.toFixed(0) }}%
+              </span>
+            </div>
+            <p *ngIf="!utilizationEntries.length" class="text-body-sm text-on-surface-variant">—</p>
+          </div>
+        </div>
+
+        <!-- Duration source breakdown -->
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 p-lg">
+          <h4 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-sm">
+            <span class="material-symbols-outlined text-teal-600">model_training</span>
+            {{ 'opt.kpi.dur_source' | translate }}
+          </h4>
+          <div class="flex flex-wrap gap-sm mb-md">
+            <span *ngFor="let s of sourceBreakdownEntries"
+                  class="px-md py-xs rounded-full text-label-sm bg-slate-100 text-on-surface border border-slate-200">
+              {{ s.label }}: <strong>{{ s.count }}</strong>
+            </span>
+            <p *ngIf="!sourceBreakdownEntries.length" class="text-body-sm text-on-surface-variant">—</p>
+          </div>
+          <p class="text-body-sm text-on-surface-variant border-t border-slate-100 pt-md">
+            {{ 'opt.kpi.conflicts' | translate }}: <strong>{{ optimizerResult.kpis.conflicts_resolved }}</strong>
+          </p>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- ── Gantt ───────────────────────────────────────────────────────── -->
     <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
       <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
           <span class="material-symbols-outlined text-teal-600">view_timeline</span>
-          {{ 'opt.gantt.title' | translate }}
+          {{ optimizerResult ? ('opt.results.gantt_title' | translate) : ('opt.gantt.title' | translate) }}
         </h4>
-        <p class="text-body-sm text-on-surface-variant">{{ 'opt.gantt.hint' | translate }}</p>
+        <p class="text-body-sm text-on-surface-variant">
+          {{ optimizerResult ? ('opt.results.gantt_hint' | translate) : ('opt.gantt.hint' | translate) }}
+        </p>
       </div>
+
+      <!-- "Run optimizer" nudge banner -->
+      <div *ngIf="!optimizerResult && !isRunning"
+           class="px-lg py-sm bg-teal-50 border-b border-teal-100 flex items-center gap-sm">
+        <span class="material-symbols-outlined text-teal-600 text-base">info</span>
+        <p class="text-body-sm text-teal-700">{{ 'opt.hist.hint' | translate }}</p>
+      </div>
+
+      <!-- Date navigation bar -->
+      <div *ngIf="availableDates.length > 0"
+           class="px-lg py-sm border-b border-slate-100 flex items-center gap-md bg-white">
+        <button type="button" (click)="prevDay()"
+                [disabled]="selectedDateIndex <= 0"
+                class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+          chevron_left
+        </button>
+        <span class="text-body-sm font-semibold text-on-surface min-w-[160px] text-center">
+          {{ selectedDate }}
+        </span>
+        <button type="button" (click)="nextDay()"
+                [disabled]="selectedDateIndex >= availableDates.length - 1"
+                class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+          chevron_right
+        </button>
+        <span class="text-body-sm text-on-surface-variant ml-auto">
+          {{ vesselCountForDate }} {{ 'opt.gantt.vessels_label' | translate }}
+          <span class="text-slate-300 mx-xs">·</span>
+          {{ selectedDateIndex + 1 }} / {{ availableDates.length }}
+        </span>
+      </div>
+
       <div class="overflow-x-auto">
         <div class="min-w-[900px] p-lg">
-          <!-- Time axis labels -->
+          <!-- Time axis -->
           <div class="flex ml-28 border-b border-slate-200 mb-4 pb-2">
-            <div *ngFor="let h of ganttHours"
+            <div *ngFor="let h of filteredGanttHours"
                  class="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
               {{ h }}
             </div>
           </div>
           <!-- Berth rows -->
-          <div *ngFor="let berth of ganttBerths; let even = even"
+          <div *ngFor="let berth of filteredGanttBerths; let even = even"
                class="flex items-center border-t border-slate-100 py-2"
-               [ngClass]="even ? 'bg-slate-50/40' : 'bg-white'">
-            <div class="w-28 pr-md flex-shrink-0">
+               [ngClass]="even ? 'bg-slate-50/40' : 'bg-white'"
+               [style.min-height]="laneHeight(berth.laneCount)">
+            <div class="w-28 pr-md flex-shrink-0 self-start pt-1">
               <span class="text-label-sm text-on-surface-variant truncate block">{{ berth.name }}</span>
             </div>
-            <div class="flex-1 h-10 relative">
+            <div class="flex-1 relative" [style.height]="laneHeight(berth.laneCount)">
               <div *ngFor="let vessel of berth.vessels"
-                   class="absolute top-0 h-10 rounded-lg flex items-center px-3 text-white text-[11px] font-bold shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden"
-                   [ngClass]="vessel.colorClass"
+                   class="absolute h-10 flex items-center px-3 text-white text-[11px] font-bold shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden"
+                   [ngClass]="[vessel.colorClass, vessel.clipped ? 'rounded-l-lg' : 'rounded-lg']"
                    [style.left]="vessel.left"
                    [style.width]="vessel.width"
-                   [title]="vessel.name + ' — ' + vessel.call.operation_type"
-                   (click)="openVesselDetail(vessel)">
-                <span class="truncate">{{ vessel.name }}</span>
+                   [style.top]="vessel.top"
+                   [title]="vessel.name"
+                   (click)="optimizerResult ? openOptimizerDetail(vessel) : openHistoricalDetail(vessel)">
+                <span class="truncate flex-1">{{ vessel.name }}</span>
+                <span *ngIf="vessel.clipped"
+                      class="material-symbols-outlined text-base flex-shrink-0 ml-1 opacity-90">
+                  keyboard_double_arrow_right
+                </span>
               </div>
             </div>
           </div>
+          <p *ngIf="!filteredGanttBerths.length" class="text-body-sm text-on-surface-variant py-md text-center">—</p>
         </div>
       </div>
     </div>
-  </ng-container>
+
+  </ng-container><!-- /hasData -->
 </div>
 
 <!-- Vessel Detail Panel -->

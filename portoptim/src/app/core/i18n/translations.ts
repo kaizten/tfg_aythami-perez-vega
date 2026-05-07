@@ -51,7 +51,7 @@ const en: TranslationMap = {
   'di.preview.view_opt': 'View Optimization',
 
   'di.col.call_id':      'Call ID',
-  'di.col.mooring_zone': 'Mooring Zone',
+  'di.col.mooring_zone': 'Berth',
   'di.col.berthing':     'Berthing',
   'di.col.unberthing':   'Unberthing',
   'di.col.loa':          'LOA (m)',
@@ -65,21 +65,26 @@ const en: TranslationMap = {
   'di.summary.total':        'Total input rows',
   'di.summary.valid':        'Valid records',
   'di.summary.skipped':      'Skipped rows',
-  'di.summary.zones':        'Mooring zones',
+  'di.summary.zones':        'Berths',
   'di.summary.skip_reasons': 'Skip reasons',
   'di.summary.waiting':      'Upload a file to see the transformation report.',
-  'di.summary.proceed':      'Proceed to Optimization →',
+  'di.summary.proceed':      'Proceed to Optimization',
 
   'di.params.title':       'Optimization Parameters',
   'di.params.pilots':      'No. of Pilots',
   'di.params.tugs':        'No. of Tugs',
-  'di.params.zones_title': 'Mooring Zones',
+  'di.params.zones_title': 'Berths',
   'di.params.zones_empty': 'Upload a file to configure mooring zones.',
   'di.params.bap_type':    'BAP type',
   'di.params.continuous':  'Continuous',
   'di.params.discrete':    'Discrete',
   'di.params.noray_max':   'Noray max',
   'di.params.capacity':    'Capacity',
+  'di.params.err.title':        'Complete all required fields',
+  'di.params.err.pilots':       'Number of pilots is required (≥ 1)',
+  'di.params.err.tugs':         'Number of tugs is required (≥ 1)',
+  'di.params.err.zone_noray':   'Noray max is required for berth',
+  'di.params.err.zone_capacity':'Capacity is required for berth',
 
   // ── Dashboard page ───────────────────────────────────────────────────────
   'dash.no_data_msg':          'No dataset loaded — KPIs will update after you upload data in',
@@ -113,10 +118,11 @@ const en: TranslationMap = {
   'alerts.view_all':       'VIEW ALL NOTIFICATIONS',
 
   // ── Berth timeline ───────────────────────────────────────────────────────
-  'timeline.title': 'Berth Allocation Timeline (24h)',
-  'timeline.prev':  'PREVIOUS DAY',
-  'timeline.today': 'TODAY',
-  'timeline.next':  'NEXT DAY',
+  'timeline.title':    'Berth Allocation Timeline (24h)',
+  'timeline.prev':     'PREVIOUS DAY',
+  'timeline.today':    'TODAY',
+  'timeline.next':     'NEXT DAY',
+  'timeline.go_today': 'Go to Today',
 
   // ── Optimization page ────────────────────────────────────────────────────
   'opt.no_data.title': 'No dataset loaded',
@@ -126,8 +132,9 @@ const en: TranslationMap = {
   'opt.records':       'records across',
   'opt.berths':        'berths',
   'opt.new_dataset':   'New Dataset',
-  'opt.gantt.title':   'Berth Allocation Timeline',
-  'opt.gantt.hint':    'Click a vessel block to see details',
+  'opt.gantt.title':          'Berth Allocation Timeline',
+  'opt.gantt.hint':           'Click a vessel block to see details',
+  'opt.gantt.vessels_label':  'vessels',
 
   // ── Vessel detail panel ──────────────────────────────────────────────────
   'vessel.status':       'Status',
@@ -144,6 +151,56 @@ const en: TranslationMap = {
   'vessel.cargo.title':  'Cargo Details',
   'vessel.edit':         'Edit Assignment',
   'vessel.confirm':      'Confirm Berth',
+
+  // ── Optimizer — params validation ────────────────────────────────────────
+  'opt.params_err.no_params':  'No parameters configured — go to Data Input first',
+  'opt.params_err.fix_link':   'Fix in Data Input',
+
+  // ── Optimizer — run controls ─────────────────────────────────────────────
+  'opt.run_btn':     'Run Optimizer',
+  'opt.running':     'Optimizing…',
+  'opt.running_msg': 'Running scheduling algorithm, please wait…',
+  'opt.rerun':       'Re-run',
+  'opt.error':       'Optimization failed',
+
+  // ── Optimizer — result header ─────────────────────────────────────────────
+  'opt.results.title':      'Optimized Schedule',
+  'opt.results.gantt_title':'Proposed Berth Allocation',
+  'opt.results.gantt_hint': 'Click a vessel block for schedule details',
+
+  // ── Optimizer — KPI labels ────────────────────────────────────────────────
+  'opt.kpi.total_wait':     'Total Waiting',
+  'opt.kpi.total_wait_sub': 'sum across all vessels',
+  'opt.kpi.avg_wait':       'Avg. Waiting',
+  'opt.kpi.avg_wait_sub':   'per vessel',
+  'opt.kpi.improvement':    'Improvement',
+  'opt.kpi.improvement_sub':'vs. greedy baseline',
+  'opt.kpi.unresolved':     'Unresolved',
+  'opt.kpi.unresolved_sub': 'vessels without berth',
+  'opt.kpi.utilization':    'Berth Utilization',
+  'opt.kpi.dur_source':     'Duration Sources',
+  'opt.kpi.conflicts':      'GT conflicts resolved',
+
+  // ── Optimizer — historical view ───────────────────────────────────────────
+  'opt.hist.vessels':     'Total Vessels',
+  'opt.hist.vessels_sub': 'transformed port calls',
+  'opt.hist.berths':      'Active Berths',
+  'opt.hist.berths_sub':  'unique berth IDs',
+  'opt.hist.avg_dur':     'Avg. Duration',
+  'opt.hist.avg_dur_sub': 'per port call',
+  'opt.hist.skipped':     'Skipped Rows',
+  'opt.hist.skipped_ok':  'all rows valid',
+  'opt.hist.skipped_warn':'check skip reasons',
+  'opt.hist.hint':        'Showing historical data — click Run Optimizer to generate the proposed schedule',
+
+  // ── Optimizer — vessel detail extras ─────────────────────────────────────
+  'opt.detail.schedule_title': 'Optimizer Schedule',
+  'opt.detail.wait':           'Waiting Time',
+  'opt.detail.duration':       'Est. Duration',
+  'opt.detail.source':         'Duration Source',
+  'opt.detail.status':         'Status',
+  'opt.detail.pilot':          'Pilot',
+  'opt.detail.tug':            'Tug',
 };
 
 const es: TranslationMap = {
@@ -213,6 +270,11 @@ const es: TranslationMap = {
   'di.params.discrete':    'Discreto',
   'di.params.noray_max':   'Noray máx.',
   'di.params.capacity':    'Capacidad',
+  'di.params.err.title':        'Completa todos los campos obligatorios',
+  'di.params.err.pilots':       'El nº de prácticos es obligatorio (≥ 1)',
+  'di.params.err.tugs':         'El nº de remolcadores es obligatorio (≥ 1)',
+  'di.params.err.zone_noray':   'Noray máx. es obligatorio para el muelle',
+  'di.params.err.zone_capacity':'La capacidad es obligatoria para el muelle',
 
   'dash.no_data_msg':          'Sin datos cargados — los KPIs se actualizarán tras subir datos en',
   'dash.metric.total_vessels': 'Total de Escales',
@@ -243,10 +305,11 @@ const es: TranslationMap = {
   'alerts.notice.body':    'Equipo de turno de noche programado para el relevo a las 18:00.',
   'alerts.view_all':       'VER TODAS LAS NOTIFICACIONES',
 
-  'timeline.title': 'Línea de Tiempo de Asignación (24h)',
-  'timeline.prev':  'DÍA ANTERIOR',
-  'timeline.today': 'HOY',
-  'timeline.next':  'DÍA SIGUIENTE',
+  'timeline.title':    'Línea de Tiempo de Asignación (24h)',
+  'timeline.prev':     'DÍA ANTERIOR',
+  'timeline.today':    'HOY',
+  'timeline.next':     'DÍA SIGUIENTE',
+  'timeline.go_today': 'Ir a Hoy',
 
   'opt.no_data.title': 'Sin datos cargados',
   'opt.no_data.body':  'Sube un CSV de operaciones portuarias para generar el plan de optimización.',
@@ -255,8 +318,9 @@ const es: TranslationMap = {
   'opt.records':       'registros en',
   'opt.berths':        'muelles',
   'opt.new_dataset':   'Nuevo Fichero',
-  'opt.gantt.title':   'Línea de Tiempo de Asignación',
-  'opt.gantt.hint':    'Haz clic en un bloque para ver los detalles',
+  'opt.gantt.title':          'Línea de Tiempo de Asignación',
+  'opt.gantt.hint':           'Haz clic en un bloque para ver los detalles',
+  'opt.gantt.vessels_label':  'buques',
 
   'vessel.status':       'Estado',
   'vessel.priority':     'Prioridad',
@@ -272,6 +336,50 @@ const es: TranslationMap = {
   'vessel.cargo.title':  'Detalles de Carga',
   'vessel.edit':         'Editar Asignación',
   'vessel.confirm':      'Confirmar Muelle',
+
+  'opt.params_err.no_params':  'Sin parámetros configurados — ve primero a Entrada de Datos',
+  'opt.params_err.fix_link':   'Corregir en Entrada de Datos',
+
+  'opt.run_btn':     'Ejecutar Optimizador',
+  'opt.running':     'Optimizando…',
+  'opt.running_msg': 'Ejecutando algoritmo de planificación, por favor espere…',
+  'opt.rerun':       'Volver a ejecutar',
+  'opt.error':       'Error en la optimización',
+
+  'opt.results.title':      'Plan Optimizado',
+  'opt.results.gantt_title':'Asignación de Muelles Propuesta',
+  'opt.results.gantt_hint': 'Haz clic en un bloque para ver los detalles de planificación',
+
+  'opt.kpi.total_wait':     'Espera Total',
+  'opt.kpi.total_wait_sub': 'suma de todos los buques',
+  'opt.kpi.avg_wait':       'Espera Media',
+  'opt.kpi.avg_wait_sub':   'por buque',
+  'opt.kpi.improvement':    'Mejora',
+  'opt.kpi.improvement_sub':'respecto al greedy',
+  'opt.kpi.unresolved':     'Sin asignar',
+  'opt.kpi.unresolved_sub': 'buques sin muelle',
+  'opt.kpi.utilization':    'Utilización de Muelles',
+  'opt.kpi.dur_source':     'Fuentes de Duración',
+  'opt.kpi.conflicts':      'Conflictos GT resueltos',
+
+  'opt.hist.vessels':     'Total de Escales',
+  'opt.hist.vessels_sub': 'escales transformadas',
+  'opt.hist.berths':      'Muelles Activos',
+  'opt.hist.berths_sub':  'IDs de muelle únicos',
+  'opt.hist.avg_dur':     'Duración Media',
+  'opt.hist.avg_dur_sub': 'por escala',
+  'opt.hist.skipped':     'Filas Omitidas',
+  'opt.hist.skipped_ok':  'todas las filas son válidas',
+  'opt.hist.skipped_warn':'revisar motivos de omisión',
+  'opt.hist.hint':        'Mostrando datos históricos — haz clic en Ejecutar Optimizador para generar el plan propuesto',
+
+  'opt.detail.schedule_title': 'Plan del Optimizador',
+  'opt.detail.wait':           'Tiempo de Espera',
+  'opt.detail.duration':       'Duración Est.',
+  'opt.detail.source':         'Fuente de Duración',
+  'opt.detail.status':         'Estado',
+  'opt.detail.pilot':          'Práctico',
+  'opt.detail.tug':            'Remolcador',
 };
 
 const de: TranslationMap = {
@@ -341,6 +449,11 @@ const de: TranslationMap = {
   'di.params.discrete':    'Diskret',
   'di.params.noray_max':   'Festmacher max.',
   'di.params.capacity':    'Kapazität',
+  'di.params.err.title':        'Alle Pflichtfelder ausfüllen',
+  'di.params.err.pilots':       'Anzahl Lotsen ist erforderlich (≥ 1)',
+  'di.params.err.tugs':         'Anzahl Schlepper ist erforderlich (≥ 1)',
+  'di.params.err.zone_noray':   'Festmacher max. erforderlich für Liegeplatz',
+  'di.params.err.zone_capacity':'Kapazität erforderlich für Liegeplatz',
 
   'dash.no_data_msg':          'Kein Datensatz — KPIs werden aktualisiert, nachdem Sie Daten geladen haben unter',
   'dash.metric.total_vessels': 'Schiffsbesuche gesamt',
@@ -371,10 +484,11 @@ const de: TranslationMap = {
   'alerts.notice.body':    'Nachtschichtteam für Übergabe um 18:00 Uhr eingeplant.',
   'alerts.view_all':       'ALLE BENACHRICHTIGUNGEN',
 
-  'timeline.title': 'Liegeplatzbelegung (24h)',
-  'timeline.prev':  'VORHERIGER TAG',
-  'timeline.today': 'HEUTE',
-  'timeline.next':  'NÄCHSTER TAG',
+  'timeline.title':    'Liegeplatzbelegung (24h)',
+  'timeline.prev':     'VORHERIGER TAG',
+  'timeline.today':    'HEUTE',
+  'timeline.next':     'NÄCHSTER TAG',
+  'timeline.go_today': 'Zum Heute',
 
   'opt.no_data.title': 'Kein Datensatz geladen',
   'opt.no_data.body':  'Laden Sie eine CSV-Datei mit Hafenoperationen hoch, um den Optimierungsplan zu erstellen.',
@@ -383,8 +497,9 @@ const de: TranslationMap = {
   'opt.records':       'Einträge über',
   'opt.berths':        'Liegeplätze',
   'opt.new_dataset':   'Neuer Datensatz',
-  'opt.gantt.title':   'Liegeplatzbelegung',
-  'opt.gantt.hint':    'Klicken Sie auf einen Block für Details',
+  'opt.gantt.title':          'Liegeplatzbelegung',
+  'opt.gantt.hint':           'Klicken Sie auf einen Block für Details',
+  'opt.gantt.vessels_label':  'Schiffe',
 
   'vessel.status':       'Status',
   'vessel.priority':     'Priorität',
@@ -400,6 +515,50 @@ const de: TranslationMap = {
   'vessel.cargo.title':  'Ladungsdetails',
   'vessel.edit':         'Zuweisung bearbeiten',
   'vessel.confirm':      'Liegeplatz bestätigen',
+
+  'opt.params_err.no_params':  'Keine Parameter konfiguriert — gehen Sie zuerst zur Dateneingabe',
+  'opt.params_err.fix_link':   'In Dateneingabe korrigieren',
+
+  'opt.run_btn':     'Optimierung starten',
+  'opt.running':     'Optimierung läuft…',
+  'opt.running_msg': 'Planungsalgorithmus wird ausgeführt, bitte warten…',
+  'opt.rerun':       'Neu berechnen',
+  'opt.error':       'Optimierung fehlgeschlagen',
+
+  'opt.results.title':      'Optimierter Fahrplan',
+  'opt.results.gantt_title':'Vorgeschlagene Liegeplatzbelegung',
+  'opt.results.gantt_hint': 'Klicken Sie auf einen Block für Planungsdetails',
+
+  'opt.kpi.total_wait':     'Gesamtwartezeit',
+  'opt.kpi.total_wait_sub': 'Summe aller Schiffe',
+  'opt.kpi.avg_wait':       'Ø Wartezeit',
+  'opt.kpi.avg_wait_sub':   'pro Schiff',
+  'opt.kpi.improvement':    'Verbesserung',
+  'opt.kpi.improvement_sub':'gegenüber Greedy',
+  'opt.kpi.unresolved':     'Nicht zugeteilt',
+  'opt.kpi.unresolved_sub': 'Schiffe ohne Liegeplatz',
+  'opt.kpi.utilization':    'Liegeplatzbelegung',
+  'opt.kpi.dur_source':     'Dauerquellen',
+  'opt.kpi.conflicts':      'GT-Konflikte gelöst',
+
+  'opt.hist.vessels':     'Schiffsbesuche gesamt',
+  'opt.hist.vessels_sub': 'transformierte Hafenbesuche',
+  'opt.hist.berths':      'Aktive Liegeplätze',
+  'opt.hist.berths_sub':  'einzigartige Liegeplatz-IDs',
+  'opt.hist.avg_dur':     'Ø Aufenthaltsdauer',
+  'opt.hist.avg_dur_sub': 'pro Hafenbesuch',
+  'opt.hist.skipped':     'Übersprungene Zeilen',
+  'opt.hist.skipped_ok':  'alle Zeilen gültig',
+  'opt.hist.skipped_warn':'Gründe prüfen',
+  'opt.hist.hint':        'Historische Daten — klicken Sie auf Optimierung starten, um den Vorschlag zu erstellen',
+
+  'opt.detail.schedule_title': 'Optimierungsplan',
+  'opt.detail.wait':           'Wartezeit',
+  'opt.detail.duration':       'Gesch. Dauer',
+  'opt.detail.source':         'Dauerquelle',
+  'opt.detail.status':         'Status',
+  'opt.detail.pilot':          'Lotse',
+  'opt.detail.tug':            'Schlepper',
 };
 
 const fr: TranslationMap = {
@@ -469,6 +628,11 @@ const fr: TranslationMap = {
   'di.params.discrete':    'Discret',
   'di.params.noray_max':   'Bitton max.',
   'di.params.capacity':    'Capacité',
+  'di.params.err.title':        'Remplissez tous les champs obligatoires',
+  'di.params.err.pilots':       'Nombre de pilotes requis (≥ 1)',
+  'di.params.err.tugs':         'Nombre de remorqueurs requis (≥ 1)',
+  'di.params.err.zone_noray':   'Bitton max. requis pour le poste',
+  'di.params.err.zone_capacity':'Capacité requise pour le poste',
 
   'dash.no_data_msg':          "Aucune donnée chargée — les KPIs seront mis à jour après avoir importé des données dans",
   'dash.metric.total_vessels': 'Escales totales',
@@ -499,10 +663,11 @@ const fr: TranslationMap = {
   'alerts.notice.body':    "L'équipe de nuit est prévue pour la passation à 18h00.",
   'alerts.view_all':       'TOUTES LES NOTIFICATIONS',
 
-  'timeline.title': "Chronogramme d'affectation (24h)",
-  'timeline.prev':  'JOUR PRÉCÉDENT',
-  'timeline.today': "AUJOURD'HUI",
-  'timeline.next':  'JOUR SUIVANT',
+  'timeline.title':    "Chronogramme d'affectation (24h)",
+  'timeline.prev':     'JOUR PRÉCÉDENT',
+  'timeline.today':    "AUJOURD'HUI",
+  'timeline.next':     'JOUR SUIVANT',
+  'timeline.go_today': "Aller à Aujourd'hui",
 
   'opt.no_data.title': 'Aucune donnée chargée',
   'opt.no_data.body':  "Importez un CSV d'opérations portuaires pour générer le planning optimisé.",
@@ -511,8 +676,9 @@ const fr: TranslationMap = {
   'opt.records':       'enregistrements sur',
   'opt.berths':        'postes à quai',
   'opt.new_dataset':   'Nouveau jeu de données',
-  'opt.gantt.title':   "Chronogramme d'affectation",
-  'opt.gantt.hint':    'Cliquez sur un bloc pour voir les détails',
+  'opt.gantt.title':          "Chronogramme d'affectation",
+  'opt.gantt.hint':           'Cliquez sur un bloc pour voir les détails',
+  'opt.gantt.vessels_label':  'navires',
 
   'vessel.status':       'Statut',
   'vessel.priority':     'Priorité',
@@ -528,6 +694,50 @@ const fr: TranslationMap = {
   'vessel.cargo.title':  'Détails de la cargaison',
   'vessel.edit':         "Modifier l'affectation",
   'vessel.confirm':      'Confirmer le poste',
+
+  'opt.params_err.no_params':  'Aucun paramètre configuré — accédez d\'abord à la saisie de données',
+  'opt.params_err.fix_link':   'Corriger dans la saisie',
+
+  'opt.run_btn':     "Lancer l'optimiseur",
+  'opt.running':     'Optimisation en cours…',
+  'opt.running_msg': "Algorithme de planification en cours d'exécution, veuillez patienter…",
+  'opt.rerun':       'Relancer',
+  'opt.error':       "Échec de l'optimisation",
+
+  'opt.results.title':      'Planning optimisé',
+  'opt.results.gantt_title':'Affectation de postes proposée',
+  'opt.results.gantt_hint': "Cliquez sur un bloc pour les détails de planification",
+
+  'opt.kpi.total_wait':     "Attente totale",
+  'opt.kpi.total_wait_sub': 'somme de tous les navires',
+  'opt.kpi.avg_wait':       'Attente moy.',
+  'opt.kpi.avg_wait_sub':   'par navire',
+  'opt.kpi.improvement':    'Amélioration',
+  'opt.kpi.improvement_sub':'vs. base greedy',
+  'opt.kpi.unresolved':     'Non résolus',
+  'opt.kpi.unresolved_sub': 'navires sans poste',
+  'opt.kpi.utilization':    'Utilisation des postes',
+  'opt.kpi.dur_source':     'Sources de durée',
+  'opt.kpi.conflicts':      'Conflits GT résolus',
+
+  'opt.hist.vessels':     'Escales totales',
+  'opt.hist.vessels_sub': 'escales transformées',
+  'opt.hist.berths':      'Postes actifs',
+  'opt.hist.berths_sub':  'IDs de poste uniques',
+  'opt.hist.avg_dur':     'Durée moy.',
+  'opt.hist.avg_dur_sub': 'par escale',
+  'opt.hist.skipped':     'Lignes ignorées',
+  'opt.hist.skipped_ok':  'toutes les lignes sont valides',
+  'opt.hist.skipped_warn':'vérifier les motifs',
+  'opt.hist.hint':        "Données historiques — cliquez sur Lancer l'optimiseur pour générer le planning proposé",
+
+  'opt.detail.schedule_title': "Planning optimisé",
+  'opt.detail.wait':           "Temps d'attente",
+  'opt.detail.duration':       'Durée est.',
+  'opt.detail.source':         'Source de durée',
+  'opt.detail.status':         'Statut',
+  'opt.detail.pilot':          'Pilote',
+  'opt.detail.tug':            'Remorqueur',
 };
 
 export const translations: Record<LangCode, TranslationMap> = { en, es, de, fr };

@@ -1,44 +1,120 @@
 <div class="bg-white rounded-xl border border-outline-variant shadow-card overflow-hidden">
+
+  <!-- Header -->
   <div class="p-lg border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
     <div class="flex items-center gap-md">
       <span class="material-symbols-outlined text-primary-container">timeline</span>
       <h3 class="text-h3 font-semibold text-on-surface">{{ 'timeline.title' | translate }}</h3>
     </div>
-    <div class="flex gap-base">
-      <button type="button" class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all">{{ 'timeline.prev' | translate }}</button>
-      <button type="button" class="px-md py-1.5 text-xs font-bold bg-on-secondary-container text-white rounded hover:opacity-90 transition-all shadow-md">{{ 'timeline.today' | translate }}</button>
-      <button type="button" class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all">{{ 'timeline.next' | translate }}</button>
+
+    <div *ngIf="availableDays.length" class="flex items-center gap-base">
+
+      <!-- Viewing today: [PREVIOUS DAY] [TODAY] [NEXT DAY] -->
+      <ng-container *ngIf="isToday">
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all disabled:opacity-40"
+                [disabled]="selectedDayIndex === 0"
+                (click)="prevDay()">
+          {{ 'timeline.prev' | translate }}
+        </button>
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold bg-on-secondary-container text-white rounded shadow-md cursor-default select-none">
+          {{ 'timeline.today' | translate }}
+        </button>
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all disabled:opacity-40"
+                [disabled]="selectedDayIndex >= availableDays.length - 1"
+                (click)="nextDay()">
+          {{ 'timeline.next' | translate }}
+        </button>
+      </ng-container>
+
+      <!-- Not on today: [Go to Today] [PREVIOUS DAY] (date) [NEXT DAY] -->
+      <ng-container *ngIf="!isToday">
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold border border-teal-600 text-teal-600 rounded hover:bg-teal-50 transition-all"
+                (click)="goToday()">
+          {{ 'timeline.go_today' | translate }}
+        </button>
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all disabled:opacity-40"
+                [disabled]="selectedDayIndex === 0"
+                (click)="prevDay()">
+          {{ 'timeline.prev' | translate }}
+        </button>
+        <span class="min-w-[130px] text-center text-label-sm font-semibold text-on-surface px-sm">
+          {{ selectedDayLabel }}
+        </span>
+        <button type="button"
+                class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all disabled:opacity-40"
+                [disabled]="selectedDayIndex >= availableDays.length - 1"
+                (click)="nextDay()">
+          {{ 'timeline.next' | translate }}
+        </button>
+      </ng-container>
+
     </div>
   </div>
 
+  <!-- Gantt -->
   <div class="p-lg overflow-x-auto">
-    <div class="min-w-[900px]">
-      <!-- Hour headers -->
-      <div class="flex ml-36 border-b border-slate-200 pb-2 mb-4">
-        <div *ngFor="let hour of timeLabels" class="flex-1 text-center text-[10px] font-bold uppercase tracking-tighter"
-             [ngClass]="hour.current ? 'text-teal-600' : 'text-slate-400'">
-          {{ hour.label }}
+    <div class="min-w-[700px]">
+
+      <!-- Hour axis -->
+      <div class="flex ml-28 border-b border-slate-200 pb-2 mb-1">
+        <div *ngFor="let h of hourLabels"
+             class="flex-1 text-center text-[10px] font-bold uppercase tracking-tighter text-slate-400">
+          {{ h }}
         </div>
       </div>
 
-      <!-- Berth rows -->
-      <div class="space-y-4 relative">
-        <div class="absolute top-0 bottom-0 w-[2px] bg-teal-500 z-10 opacity-50" [style.left]="currentTimeOffset"></div>
-        <div *ngFor="let berth of berths" class="flex items-center">
-          <div class="w-36 pr-md">
-            <span class="text-label-md text-on-surface-variant">{{ berth.name }}</span>
+      <!-- Scrollable berth rows -->
+      <div class="max-h-[480px] overflow-y-auto relative">
+
+        <!-- "Now" line — only visible when viewing today -->
+        <div *ngIf="isToday"
+             class="absolute top-0 bottom-0 w-0.5 bg-green-500 z-10 opacity-75 pointer-events-none"
+             [style.left]="currentTimeLeft">
+        </div>
+
+        <!-- Berth rows -->
+        <div *ngFor="let berth of ganttBerths; let even = even"
+             class="flex items-center border-t border-slate-100 py-2"
+             [ngClass]="even ? 'bg-slate-50/40' : 'bg-white'"
+             [style.min-height]="laneHeight(berth.laneCount)">
+
+          <!-- Berth label -->
+          <div class="w-28 pr-md flex-shrink-0 self-start pt-1">
+            <span class="text-label-sm text-on-surface-variant truncate block">{{ berth.name }}</span>
           </div>
-          <div class="flex-1 h-10 bg-slate-50 rounded relative overflow-hidden flex items-center">
-            <div *ngFor="let block of berth.blocks"
-                 class="absolute h-8 rounded flex items-center px-md text-[11px] font-bold shadow-sm"
-                 [ngClass]="block.colorClass"
-                 [style.left]="block.left"
-                 [style.width]="block.width">
-              {{ block.label }}
+
+          <!-- Chart area -->
+          <div class="flex-1 relative" [style.height]="laneHeight(berth.laneCount)">
+            <div *ngFor="let vessel of berth.vessels"
+                 class="absolute h-10 flex items-center px-3 text-white text-[11px] font-bold shadow-sm overflow-hidden"
+                 [ngClass]="[vessel.colorClass,
+                   vessel.clippedLeft && vessel.clippedRight ? 'rounded-none' :
+                   vessel.clippedLeft  ? 'rounded-r-lg' :
+                   vessel.clippedRight ? 'rounded-l-lg' : 'rounded-lg']"
+                 [style.left]="vessel.left"
+                 [style.width]="vessel.width"
+                 [style.top]="vessel.top"
+                 [title]="vessel.name">
+              <span *ngIf="vessel.clippedLeft"
+                    class="material-symbols-outlined text-base flex-shrink-0 mr-1 opacity-90">
+                keyboard_double_arrow_left
+              </span>
+              <span class="truncate flex-1">{{ vessel.name }}</span>
+              <span *ngIf="vessel.clippedRight"
+                    class="material-symbols-outlined text-base flex-shrink-0 ml-1 opacity-90">
+                keyboard_double_arrow_right
+              </span>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   </div>
+
 </div>

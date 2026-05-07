@@ -2,7 +2,12 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
-import { ApiError, TransformApiResponse } from '../models/api.models';
+import {
+  ApiError,
+  OptimizationApiRequest,
+  OptimizationApiResult,
+  TransformApiResponse,
+} from '../models/api.models';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -16,6 +21,13 @@ export class PortOptimApiService {
     form.append('file', file, file.name);
     return this.http
       .post<TransformApiResponse>(`${API_BASE}/api/v1/transform/`, form)
+      .pipe(catchError(this.handleError));
+  }
+
+  /** Send the optimization request and return the proposed schedule. */
+  runOptimization(request: OptimizationApiRequest): Observable<OptimizationApiResult> {
+    return this.http
+      .post<OptimizationApiResult>(`${API_BASE}/api/v1/optimize/run`, request)
       .pipe(catchError(this.handleError));
   }
 
