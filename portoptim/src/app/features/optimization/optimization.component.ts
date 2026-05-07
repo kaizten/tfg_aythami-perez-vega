@@ -475,11 +475,12 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   openHistoricalDetail(vessel: GanttVessel): void {
     const c = vessel.call!;
+    const started = new Date(c.arrival_time) <= new Date();
     this.selectedVessel = {
       name: c.call_id,
       imo: `Berth: ${c.berth_id}`,
-      status: c.operation_type || 'Unknown',
-      statusColor: 'bg-teal-500',
+      status: started ? 'vessel.status.in_progress' : 'vessel.status.on_the_way',
+      statusColor: started ? 'bg-amber-500' : 'bg-blue-400',
       priority: c.operation_type,
       type: c.operation_type,
       loa: `${c.vessel_length} m`,
@@ -495,11 +496,12 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   openOptimizerDetail(vessel: GanttVessel): void {
     const a = vessel.assignment!;
-    const statusColor = a.status === 'assigned' ? 'bg-teal-500' : a.status === 'unassigned' ? 'bg-amber-500' : 'bg-red-500';
+    const started = new Date(a.scheduled_start) <= new Date();
+    const statusColor = started ? 'bg-amber-500' : 'bg-blue-400';
     this.selectedVessel = {
       name: a.vessel_id,
       imo: `Berth: ${a.berth_id}`,
-      status: a.status,
+      status: started ? 'vessel.status.in_progress' : 'vessel.status.on_the_way',
       statusColor,
       priority: 'GT Priority',
       type: a.duration_source,

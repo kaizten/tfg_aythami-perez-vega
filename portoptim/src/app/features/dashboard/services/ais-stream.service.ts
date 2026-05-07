@@ -22,6 +22,8 @@ export class AisStreamService implements OnDestroy {
   private reconnectDelay = 1_000;
   private stopped = false;
 
+  readonly lastKnownPositions = new Map<number, AisVesselPosition>();
+
   private readonly _positions$ = new Subject<AisVesselPosition>();
   readonly positions$ = this._positions$.asObservable();
 
@@ -29,6 +31,7 @@ export class AisStreamService implements OnDestroy {
   readonly status$ = this._status$.asObservable();
 
   connect(): void {
+    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
     this.stopped = false;
     this._open();
   }
@@ -73,7 +76,7 @@ export class AisStreamService implements OnDestroy {
         const meta = msg.MetaData ?? {};
         const pr   = msg.Message?.PositionReport ?? {};
         const heading = pr.TrueHeading;
-        this._positions$.next({
+        const pos: AisVesselPosition = {
           mmsi:      meta.MMSI,
           shipName:  String(meta.ShipName ?? 'Unknown').trim(),
           latitude:  meta.latitude,
@@ -82,7 +85,9 @@ export class AisStreamService implements OnDestroy {
           heading:   (heading != null && heading !== 511) ? heading : null,
           navStatus: pr.NavigationalStatus ?? null,
           timeUtc:   meta.time_utc ?? '',
-        });
+        };
+        this.lastKnownPositions.set(pos.mmsi, pos);
+        this._positions$.next(pos);
       } catch { /* ignore malformed */ }
     };
 

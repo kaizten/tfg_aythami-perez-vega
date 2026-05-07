@@ -26,7 +26,7 @@
           <p class="text-label-sm text-on-surface-variant mb-xs uppercase">{{ 'vessel.status' | translate }}</p>
           <div class="flex items-center gap-base">
             <div class="w-3 h-3 rounded-full" [ngClass]="vessel?.statusColor"></div>
-            <span class="text-label-md text-on-surface">{{ vessel?.status }}</span>
+            <span class="text-label-md text-on-surface">{{ (vessel?.status ?? '') | translate }}</span>
           </div>
         </div>
         <div class="bg-surface-container-low p-md rounded-lg border border-outline-variant">
@@ -42,10 +42,6 @@
           {{ 'vessel.details.title' | translate }}
         </h3>
         <div class="grid grid-cols-2 gap-md bg-surface-bright p-md rounded-xl border border-outline-variant">
-          <div>
-            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'vessel.type' | translate }}</p>
-            <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.type }}</p>
-          </div>
           <div>
             <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'vessel.loa' | translate }}</p>
             <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.loa }}</p>
@@ -166,11 +162,8 @@
     </div>
 
     <!-- Footer actions -->
-    <div class="p-lg border-t border-outline-variant bg-surface-container-lowest flex gap-md">
-      <button type="button" class="flex-1 py-md text-label-md text-on-surface border border-outline-variant rounded-lg hover:bg-surface-container transition-colors">
-        {{ 'vessel.edit' | translate }}
-      </button>
-      <button type="button" class="flex-1 py-md text-label-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md">
+    <div class="p-lg border-t border-outline-variant bg-surface-container-lowest">
+      <button type="button" class="w-full py-md text-label-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md">
         {{ 'vessel.confirm' | translate }}
       </button>
     </div>
