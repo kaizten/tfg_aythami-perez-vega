@@ -86,6 +86,14 @@ export interface OptimizationApiRequest {
 
 export type DurationSource = 'provided' | 'rate_model' | 'statistical_model' | 'default';
 export type AssignmentStatus = 'assigned' | 'unassigned' | 'invalid_berth';
+export type PhaseName = 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque';
+
+export interface OperationPhase {
+  name: PhaseName;
+  start: string;      // ISO 8601
+  end: string;        // ISO 8601
+  duration_h: number;
+}
 
 export interface OptimizationAssignment {
   vessel_id: string;
@@ -102,6 +110,7 @@ export interface OptimizationAssignment {
   tugs_assigned: boolean;
   status: AssignmentStatus;
   caused_delay_to: string[];
+  phases: OperationPhase[];
 }
 
 export interface OptimizationKpis {

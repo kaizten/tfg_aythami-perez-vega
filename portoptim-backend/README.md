@@ -268,7 +268,13 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
       "tugs_required": 3,
       "tugs_assigned": true,
       "status": "assigned",
-      "caused_delay_to": []
+      "caused_delay_to": [],
+      "phases": [
+        { "name": "fondeo",     "start": "2024-01-15T08:00:00", "end": "2024-01-15T08:00:00", "duration_h": 0.0 },
+        { "name": "atraque",    "start": "2024-01-15T08:00:00", "end": "2024-01-15T08:30:00", "duration_h": 0.5 },
+        { "name": "ejecucion",  "start": "2024-01-15T08:30:00", "end": "2024-01-16T05:19:00", "duration_h": 44.8 },
+        { "name": "desatraque", "start": "2024-01-16T05:19:00", "end": "2024-01-16T05:49:00", "duration_h": 0.5 }
+      ]
     }
   ],
   "kpis": {

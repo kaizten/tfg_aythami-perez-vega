@@ -105,6 +105,43 @@
         </div>
       </section>
 
+      <!-- Operation phases section -->
+      <section *ngIf="vessel?.phases?.length">
+        <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
+          <span class="material-symbols-outlined text-teal-600">view_timeline</span>
+          {{ 'opt.detail.phases_title' | translate }}
+        </h3>
+
+        <!-- Proportional colour bar (all 4 phases) -->
+        <div class="flex w-full rounded-lg overflow-hidden h-5 mb-md">
+          <ng-container *ngFor="let phase of vessel?.phases">
+            <div *ngIf="phase.duration_h > 0"
+                 class="h-full"
+                 [ngClass]="phaseColorClass(phase.name)"
+                 [style.flex]="phase.duration_h.toString()"
+                 [title]="phase.name + ': ' + phase.duration_h.toFixed(2) + ' h'">
+            </div>
+          </ng-container>
+        </div>
+
+        <!-- Per-phase breakdown grid -->
+        <div class="grid grid-cols-2 gap-sm">
+          <div *ngFor="let phase of vessel?.phases"
+               class="bg-surface-container-low p-sm rounded-lg border border-outline-variant">
+            <div class="flex items-center gap-xs mb-xs">
+              <div class="w-3 h-3 rounded-sm flex-shrink-0" [ngClass]="phaseColorClass(phase.name)"></div>
+              <span class="text-label-sm font-semibold text-on-surface">
+                {{ ('opt.phase.' + phase.name) | translate }}
+              </span>
+            </div>
+            <p class="text-h3 font-bold text-on-surface">{{ phase.duration_h.toFixed(2) }} h</p>
+            <p class="text-[10px] text-on-surface-variant mt-xs leading-tight">
+              {{ formatPhaseTime(phase.start) }}<br>→ {{ formatPhaseTime(phase.end) }}
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- Optimizer schedule section (only when opened from optimizer view) -->
       <section *ngIf="vessel?.optimizerStatus">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
@@ -128,12 +165,12 @@
             <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.durationSource }}</p>
           </div>
           <div>
-            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.status' | translate }}</p>
+            <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.berth_status' | translate }}</p>
             <span class="px-sm py-xs rounded text-label-sm font-semibold"
                   [ngClass]="{
-                    'bg-teal-100 text-teal-700': vessel?.optimizerStatus === 'assigned',
+                    'bg-teal-100 text-teal-700':  vessel?.optimizerStatus === 'assigned',
                     'bg-amber-100 text-amber-700': vessel?.optimizerStatus === 'unassigned',
-                    'bg-red-100 text-red-700': vessel?.optimizerStatus === 'invalid_berth'
+                    'bg-red-100 text-red-700':     vessel?.optimizerStatus === 'invalid_berth'
                   }">
               {{ vessel?.optimizerStatus }}
             </span>
@@ -161,9 +198,26 @@
       </section>
     </div>
 
-    <!-- Footer actions -->
-    <div class="p-lg border-t border-outline-variant bg-surface-container-lowest">
-      <button type="button" class="w-full py-md text-label-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md">
+    <!-- Footer actions — only visible in optimizer mode -->
+    <div *ngIf="isOptimizerMode" class="p-lg border-t border-outline-variant bg-surface-container-lowest">
+      <!-- Completed -->
+      <div *ngIf="isCompleted"
+           class="w-full py-md text-label-md bg-green-600 text-white rounded-lg flex items-center justify-center gap-sm shadow-md">
+        <span class="material-symbols-outlined text-base">check_circle</span>
+        {{ 'vessel.status.completed' | translate }}
+      </div>
+      <!-- On the Way → Confirm Arrival -->
+      <button *ngIf="isOnTheWay"
+              type="button"
+              (click)="confirm.emit()"
+              class="w-full py-md text-label-md bg-blue-600 text-white rounded-lg hover:opacity-90 transition-all shadow-md">
+        {{ 'vessel.confirm_arrival' | translate }}
+      </button>
+      <!-- In Progress → Confirm Operation -->
+      <button *ngIf="isInProgress"
+              type="button"
+              (click)="confirm.emit()"
+              class="w-full py-md text-label-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md">
         {{ 'vessel.confirm' | translate }}
       </button>
     </div>

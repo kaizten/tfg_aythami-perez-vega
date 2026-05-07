@@ -162,8 +162,10 @@ const en: TranslationMap = {
   'vessel.cargo.title':  'Cargo Details',
   'vessel.status.in_progress': 'In Progress',
   'vessel.status.on_the_way':  'On the Way',
-  'vessel.edit':         'Edit Assignment',
-  'vessel.confirm':      'Confirm Operation',
+  'vessel.status.completed':   'Operation Completed',
+  'vessel.edit':               'Edit Assignment',
+  'vessel.confirm':            'Confirm Operation',
+  'vessel.confirm_arrival':    'Confirm Arrival',
 
   // ── Optimizer — params validation ────────────────────────────────────────
   'opt.params_err.no_params':  'No parameters configured — go to Data Input first',
@@ -182,10 +184,10 @@ const en: TranslationMap = {
   'opt.results.gantt_hint': 'Click a vessel block for schedule details',
 
   // ── Optimizer — KPI labels ────────────────────────────────────────────────
-  'opt.kpi.total_wait':     'Total Waiting',
-  'opt.kpi.total_wait_sub': 'sum across all vessels',
-  'opt.kpi.avg_wait':       'Avg. Waiting',
-  'opt.kpi.avg_wait_sub':   'per vessel',
+  'opt.kpi.total_wait':     'Total Anchorage',
+  'opt.kpi.total_wait_sub': 'fondeo time across all vessels',
+  'opt.kpi.avg_wait':       'Avg. Anchorage',
+  'opt.kpi.avg_wait_sub':   'fondeo time per vessel',
   'opt.kpi.improvement':    'Improvement',
   'opt.kpi.improvement_sub':'vs. greedy baseline',
   'opt.kpi.unresolved':     'Unresolved',
@@ -211,9 +213,21 @@ const en: TranslationMap = {
   'opt.detail.wait':           'Waiting Time',
   'opt.detail.duration':       'Est. Duration',
   'opt.detail.source':         'Duration Source',
-  'opt.detail.status':         'Status',
+  'opt.detail.berth_status':   'Berth Status',
   'opt.detail.pilot':          'Pilot',
   'opt.detail.tug':            'Tug',
+
+  // ── Operation phases ──────────────────────────────────────────────────────
+  'opt.detail.phases_title':  'Operation Phases',
+  'opt.phase.fondeo':         'Anchorage',
+  'opt.phase.atraque':        'Docking',
+  'opt.phase.ejecucion':      'Operation',
+  'opt.phase.desatraque':     'Undocking',
+  'opt.phases.legend':        'Phases',
+  'opt.phases.fondeo_hint':   'anchorage time at anchor before docking',
+
+  // ── Berth timeline — optimizer badge ─────────────────────────────────────
+  'timeline.optimizer_mode':  'Optimizer',
 };
 
 const es: TranslationMap = {
@@ -360,8 +374,10 @@ const es: TranslationMap = {
   'vessel.cargo.title':  'Detalles de Carga',
   'vessel.status.in_progress': 'En proceso',
   'vessel.status.on_the_way':  'En camino',
-  'vessel.edit':         'Editar Asignación',
-  'vessel.confirm':      'Confirmar Operación',
+  'vessel.status.completed':   'Operación Completada',
+  'vessel.edit':               'Editar Asignación',
+  'vessel.confirm':            'Confirmar Operación',
+  'vessel.confirm_arrival':    'Confirmar Llegada',
 
   'opt.params_err.no_params':  'Sin parámetros configurados — ve primero a Entrada de Datos',
   'opt.params_err.fix_link':   'Corregir en Entrada de Datos',
@@ -376,10 +392,10 @@ const es: TranslationMap = {
   'opt.results.gantt_title':'Asignación de Muelles Propuesta',
   'opt.results.gantt_hint': 'Haz clic en un bloque para ver los detalles de planificación',
 
-  'opt.kpi.total_wait':     'Espera Total',
-  'opt.kpi.total_wait_sub': 'suma de todos los buques',
-  'opt.kpi.avg_wait':       'Espera Media',
-  'opt.kpi.avg_wait_sub':   'por buque',
+  'opt.kpi.total_wait':     'Fondeo Total',
+  'opt.kpi.total_wait_sub': 'tiempo de fondeo de todos los buques',
+  'opt.kpi.avg_wait':       'Fondeo Medio',
+  'opt.kpi.avg_wait_sub':   'tiempo de fondeo por buque',
   'opt.kpi.improvement':    'Mejora',
   'opt.kpi.improvement_sub':'respecto al greedy',
   'opt.kpi.unresolved':     'Sin asignar',
@@ -403,9 +419,21 @@ const es: TranslationMap = {
   'opt.detail.wait':           'Tiempo de Espera',
   'opt.detail.duration':       'Duración Est.',
   'opt.detail.source':         'Fuente de Duración',
-  'opt.detail.status':         'Estado',
+  'opt.detail.berth_status':   'Estado del Muelle',
   'opt.detail.pilot':          'Práctico',
   'opt.detail.tug':            'Remolcador',
+
+  // ── Fases de operación ────────────────────────────────────────────────────
+  'opt.detail.phases_title':  'Fases de la Operación',
+  'opt.phase.fondeo':         'Fondeo',
+  'opt.phase.atraque':        'Atraque',
+  'opt.phase.ejecucion':      'Ejecución',
+  'opt.phase.desatraque':     'Desatraque',
+  'opt.phases.legend':        'Fases',
+  'opt.phases.fondeo_hint':   'tiempo de fondeo en espera antes del atraque',
+
+  // ── Línea de tiempo — badge optimizador ──────────────────────────────────
+  'timeline.optimizer_mode':  'Optimizador',
 };
 
 const de: TranslationMap = {
@@ -552,8 +580,10 @@ const de: TranslationMap = {
   'vessel.cargo.title':  'Ladungsdetails',
   'vessel.status.in_progress': 'In Bearbeitung',
   'vessel.status.on_the_way':  'Auf dem Weg',
-  'vessel.edit':         'Zuweisung bearbeiten',
-  'vessel.confirm':      'Vorgang bestätigen',
+  'vessel.status.completed':   'Vorgang abgeschlossen',
+  'vessel.edit':               'Zuweisung bearbeiten',
+  'vessel.confirm':            'Vorgang bestätigen',
+  'vessel.confirm_arrival':    'Ankunft bestätigen',
 
   'opt.params_err.no_params':  'Keine Parameter konfiguriert — gehen Sie zuerst zur Dateneingabe',
   'opt.params_err.fix_link':   'In Dateneingabe korrigieren',
@@ -568,10 +598,10 @@ const de: TranslationMap = {
   'opt.results.gantt_title':'Vorgeschlagene Liegeplatzbelegung',
   'opt.results.gantt_hint': 'Klicken Sie auf einen Block für Planungsdetails',
 
-  'opt.kpi.total_wait':     'Gesamtwartezeit',
-  'opt.kpi.total_wait_sub': 'Summe aller Schiffe',
-  'opt.kpi.avg_wait':       'Ø Wartezeit',
-  'opt.kpi.avg_wait_sub':   'pro Schiff',
+  'opt.kpi.total_wait':     'Ankern Gesamt',
+  'opt.kpi.total_wait_sub': 'Ankerzeit aller Schiffe',
+  'opt.kpi.avg_wait':       'Ø Ankerzeit',
+  'opt.kpi.avg_wait_sub':   'Ankerzeit pro Schiff',
   'opt.kpi.improvement':    'Verbesserung',
   'opt.kpi.improvement_sub':'gegenüber Greedy',
   'opt.kpi.unresolved':     'Nicht zugeteilt',
@@ -595,9 +625,21 @@ const de: TranslationMap = {
   'opt.detail.wait':           'Wartezeit',
   'opt.detail.duration':       'Gesch. Dauer',
   'opt.detail.source':         'Dauerquelle',
-  'opt.detail.status':         'Status',
+  'opt.detail.berth_status':   'Liegeplatzstatus',
   'opt.detail.pilot':          'Lotse',
   'opt.detail.tug':            'Schlepper',
+
+  // ── Betriebsphasen ────────────────────────────────────────────────────────
+  'opt.detail.phases_title':  'Betriebsphasen',
+  'opt.phase.fondeo':         'Ankern',
+  'opt.phase.atraque':        'Festmachen',
+  'opt.phase.ejecucion':      'Betrieb',
+  'opt.phase.desatraque':     'Ablegen',
+  'opt.phases.legend':        'Phasen',
+  'opt.phases.fondeo_hint':   'Ankerzeit vor dem Festmachen',
+
+  // ── Liegeplatzbelegung — Optimierer-Badge ─────────────────────────────────
+  'timeline.optimizer_mode':  'Optimierer',
 };
 
 const fr: TranslationMap = {
@@ -744,8 +786,10 @@ const fr: TranslationMap = {
   'vessel.cargo.title':  'Détails de la cargaison',
   'vessel.status.in_progress': 'En cours',
   'vessel.status.on_the_way':  'En route',
-  'vessel.edit':         "Modifier l'affectation",
-  'vessel.confirm':      "Confirmer l'opération",
+  'vessel.status.completed':   'Opération terminée',
+  'vessel.edit':               "Modifier l'affectation",
+  'vessel.confirm':            "Confirmer l'opération",
+  'vessel.confirm_arrival':    "Confirmer l'arrivée",
 
   'opt.params_err.no_params':  'Aucun paramètre configuré — accédez d\'abord à la saisie de données',
   'opt.params_err.fix_link':   'Corriger dans la saisie',
@@ -760,10 +804,10 @@ const fr: TranslationMap = {
   'opt.results.gantt_title':'Affectation de postes proposée',
   'opt.results.gantt_hint': "Cliquez sur un bloc pour les détails de planification",
 
-  'opt.kpi.total_wait':     "Attente totale",
-  'opt.kpi.total_wait_sub': 'somme de tous les navires',
-  'opt.kpi.avg_wait':       'Attente moy.',
-  'opt.kpi.avg_wait_sub':   'par navire',
+  'opt.kpi.total_wait':     'Mouillage total',
+  'opt.kpi.total_wait_sub': 'temps de mouillage de tous les navires',
+  'opt.kpi.avg_wait':       'Mouillage moy.',
+  'opt.kpi.avg_wait_sub':   'temps de mouillage par navire',
   'opt.kpi.improvement':    'Amélioration',
   'opt.kpi.improvement_sub':'vs. base greedy',
   'opt.kpi.unresolved':     'Non résolus',
@@ -787,9 +831,21 @@ const fr: TranslationMap = {
   'opt.detail.wait':           "Temps d'attente",
   'opt.detail.duration':       'Durée est.',
   'opt.detail.source':         'Source de durée',
-  'opt.detail.status':         'Statut',
+  'opt.detail.berth_status':   'Statut du poste',
   'opt.detail.pilot':          'Pilote',
   'opt.detail.tug':            'Remorqueur',
+
+  // ── Phases opérationnelles ────────────────────────────────────────────────
+  'opt.detail.phases_title':  'Phases opérationnelles',
+  'opt.phase.fondeo':         'Mouillage',
+  'opt.phase.atraque':        'Accostage',
+  'opt.phase.ejecucion':      'Opération',
+  'opt.phase.desatraque':     'Appareillage',
+  'opt.phases.legend':        'Phases',
+  'opt.phases.fondeo_hint':   'temps de mouillage avant accostage',
+
+  // ── Chronogramme — badge optimiseur ──────────────────────────────────────
+  'timeline.optimizer_mode':  'Optimiseur',
 };
 
 export const translations: Record<LangCode, TranslationMap> = { en, es, de, fr };

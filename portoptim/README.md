@@ -127,16 +127,26 @@ All metrics show `—` when no dataset is loaded.
 
 #### Berth Allocation Timeline (`BerthTimelineComponent`)
 
-24-hour swim-lane Gantt chart driven by `TransformationStoreService`.
+24-hour swim-lane Gantt chart that subscribes to **both** `TransformationStoreService` (historical data) and `OptimizationResultStoreService` (optimizer results), automatically switching between modes.
 
-- **Day navigation**: collects every calendar day spanned by any vessel (arrival → departure), displays them as a navigable list. Defaults to today if the dataset contains today; otherwise defaults to the last available day.
+**Mode switching:**
+
+| Mode | Trigger | Data source | Vessel rendering |
+|---|---|---|---|
+| Historical | Transform loaded, no optimizer result | `TransformationStoreService` | Solid coloured block per `call_id` hash |
+| Optimizer | After optimizer run (`isOptimizerMode = true`) | `OptimizationResultStoreService` | Phase-coloured segments (atraque / ejecucion / desatraque) |
+
+- **Day navigation**: collects every calendar day spanned by any vessel (arrival → departure for historical; scheduled_start → scheduled_end for optimizer), displays them as a navigable list. Defaults to today if the dataset contains today; otherwise defaults to the last available day (optimizer: first available day).
 - **Navigation bar** (top-right):
   - *Viewing today*: `[PREVIOUS DAY]` · `[TODAY]` · `[NEXT DAY]`
   - *Not on today*: `[Go to Today]` · `[PREVIOUS DAY]` · *(date label)* · `[NEXT DAY]`
   - Navigation buttons disabled at the boundaries of the available date range.
 - **Swim-lane algorithm** (`assignLanes`): earliest-free-lane assignment; `LANE_PX = 44 px` per lane. Vessels that span multiple days are included in every day they overlap.
 - **Clip indicators**: vessels that start before midnight get a `keyboard_double_arrow_left` icon; vessels that end after midnight get `keyboard_double_arrow_right`. Corner rounding adapts accordingly (`rounded-l-lg`, `rounded-r-lg`, `rounded-none`).
-- **Consistent colours**: vessel colour is derived from a hash of `call_id` → 6-colour palette (teal, indigo, amber, violet, sky, rose).
+- **Historical mode colours**: vessel colour is derived from a hash of `call_id` → 6-colour palette (teal, indigo, amber, violet, sky, rose).
+- **Optimizer mode phase segments**: each vessel block is split into coloured bands — sky (atraque) / emerald (ejecucion) / violet (desatraque). Fondeo is not shown in the Gantt (only in the detail panel). Phase widths are clipped individually to the 24-hour window when a vessel spans midnight.
+- **Optimizer mode badge**: a teal pill badge labelled *Optimizador* appears next to the title when showing optimizer results.
+- **Phase legend**: shows atraque / ejecucion / desatraque colour swatches at the bottom of the component, plus a note that fondeo is visible in the detail panel only. Only visible in optimizer mode.
 - **"Now" line**: a green vertical line (`bg-green-500`) shows the current time of day. Computed using `calc(ratio × 100% + (1 − ratio) × 7rem)` to align correctly with the label column width. Updates every **60 seconds** via `interval(60_000).pipe(startWith(0))`. Only rendered when the selected day is today (`isToday`).
 - **Scrollable rows**: `max-h-[480px] overflow-y-auto` so the time axis header stays fixed while many berths scroll.
 
@@ -254,8 +264,8 @@ Dual-mode page: **Historical view** (raw transform data) and **Optimizer view** 
 
 | Card | Value | Positive condition |
 |---|---|---|
-| Total Waiting Time | sum of `waiting_time_h` | < 1 h |
-| Avg. Waiting Time | mean `waiting_time_h` | < 1 h |
+| Total Anchorage | sum of `fondeo.duration_h` across all assigned vessels (fallback: `waiting_time_h`) | < 1 h |
+| Avg. Anchorage | mean `fondeo.duration_h` per assigned vessel | < 1 h |
 | Improvement vs. Greedy | `improvement_vs_greedy_pct` % | ≥ 0 % |
 | Unresolved Vessels | `unresolved_vessels` count | = 0 |
 
@@ -267,15 +277,17 @@ Dual-mode page: **Historical view** (raw transform data) and **Optimizer view** 
 
 #### Gantt chart
 
-**5-day sliding window** navigation. Windows are computed from the earliest vessel start time; each window spans exactly 5 calendar days.
+Per-day navigation (one calendar day at a time). Days are derived from the date range spanned by the vessels in the current mode.
 
-- **Time axis**: one label per day in the window (`weekday short, day, month` in `es-ES` locale).
-- **Navigation bar**: window label (`1 ene – 5 ene`), prev/next buttons, disabled at boundaries.
+- **Time axis**: 12 hour labels from `00:00` to `22:00`, `flex-1` columns across the full-day width.
+- **Navigation bar**: date label, prev/next buttons (disabled at boundaries), vessel count and position indicator.
 - **Swim-lane system**: same `assignLanes()` algorithm as the dashboard, `LANE_PX = 44 px`.
-- **Clip indicator**: `keyboard_double_arrow_right` icon + `rounded-l-lg` for vessels whose end time exceeds the window right edge.
-- **Vessel colours**:
-  - Historical mode: rotating 6-colour palette indexed by insertion order.
-  - Optimizer mode: same palette for `assigned` vessels; `bg-red-400/70` for `unassigned`.
+- **Clip indicator**: `keyboard_double_arrow_right` / `keyboard_double_arrow_left` icons + rounded corner adaption for vessels that start before or end after the selected day.
+- **Vessel block rendering**:
+  - *Historical mode*: solid coloured block; colour from 6-colour palette by insertion order.
+  - *Optimizer mode — with phases*: `flex` row of coloured bands (sky / emerald / violet for atraque / ejecucion / desatraque); an absolute text overlay shows the vessel name (`phase-label` CSS class for text-shadow) plus a semi-transparent `⚓ X.Xh` fondeo badge (amber anchor icon + duration) aligned right.
+  - *Optimizer mode — unassigned*: solid `bg-red-400/70` block, no fondeo badge.
+- **Phase legend**: below the Gantt in optimizer mode — atraque / ejecucion / desatraque colour swatches + hint text explaining that `⚓` is the anchorage waiting time before docking.
 - **Click handler**: opens `VesselDetailPanelComponent` as a slide-over panel (different data fields depending on mode).
 
 #### Vessel Detail Panel (`VesselDetailPanelComponent`)
@@ -290,14 +302,33 @@ Slide-over panel (500 px wide, fixed right, `z-50`) triggered by clicking a Gant
 
 **Optimizer mode only** (when `optimizerStatus` is set):
 
+*Operation phases section* (shown when `phases` array is non-empty):
+
+| Element | Description |
+|---|---|
+| Phase colour bar | Proportional `flex` bar across the full width — fondeo (amber) / atraque (sky) / ejecucion (emerald) / desatraque (violet). Each segment's `flex` value equals its `duration_h`. |
+| Per-phase grid | 2-column grid: colour swatch + translated phase name, duration in hours, start → end timestamps formatted as `dd MMM HH:mm`. |
+
+*Optimizer schedule section:*
+
 | Field | Description |
 |---|---|
 | Waiting Time | `waiting_time_h` formatted to 2 dp; green if 0, amber otherwise |
 | Est. Duration | `duration_estimated_h` in hours |
 | Duration Source | `rate_model` → "Rate model", `statistical_model` → "Statistical", etc. |
-| Status badge | `assigned` (teal) / `unassigned` (amber) / `invalid_berth` (red) |
+| Berth Status | Assignment status from the optimizer — `assigned` (teal) / `unassigned` (amber) / `invalid_berth` (red). Never changes. |
 | Pilot | Check / cancel icon based on `pilot_assigned` |
 | Tugs | `do_not_disturb_on` if 0 required; check / cancel icon + count if > 0 |
+
+*Footer action button* (only visible in optimizer mode):
+
+| Operational status | Button shown | Result on click |
+|---|---|---|
+| `on_the_way` | *Confirm Arrival* (blue) | Status → `in_progress` |
+| `in_progress` | *Confirm Operation* (teal) | Status → `completed` |
+| `completed` | Green ✓ *Operation Completed* (no button) | — |
+
+The operational status is derived from `scheduled_start` vs. the current time and can be manually advanced via the button. Overrides are stored in a `Map<vessel_id, status>` in `OptimizationComponent` and survive panel re-opens; they are cleared when the optimizer is reset.
 
 ---
 
@@ -345,7 +376,7 @@ All three follow the same `BehaviorSubject` pattern:
 |---|---|---|
 | `TransformationStoreService` | `TransformApiResponse \| null` | Dashboard, DataInput, Optimization |
 | `OptimizationParamsStoreService` | `OptimizationParams \| null` | DataInput, Optimization |
-| `OptimizationResultStoreService` | `OptimizationApiResult \| null` | Optimization |
+| `OptimizationResultStoreService` | `OptimizationApiResult \| null` | **Dashboard**, Optimization |
 
 Each exposes `result$` (Observable), `snapshot` (getter), `set()`, and `clear()`.
 
@@ -431,6 +462,14 @@ interface OptimizationApiRequest {
 ```typescript
 type AssignmentStatus = 'assigned' | 'unassigned' | 'invalid_berth';
 type DurationSource   = 'provided' | 'rate_model' | 'statistical_model' | 'default';
+type PhaseName        = 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque';
+
+interface OperationPhase {
+  name: PhaseName;
+  start: string;       // ISO 8601
+  end: string;         // ISO 8601
+  duration_h: number;
+}
 
 interface OptimizationAssignment {
   vessel_id: string;
@@ -447,6 +486,7 @@ interface OptimizationAssignment {
   tugs_assigned: boolean;
   status: AssignmentStatus;
   caused_delay_to: string[];
+  phases: OperationPhase[];   // empty for unassigned vessels
 }
 
 interface OptimizationKpis {
@@ -481,8 +521,8 @@ Custom client-side system — no Angular i18n builder.
 
 **How it works:**
 
-- `translations.ts` exports a `Record<LangCode, Record<string, string>>` with ~200 keys per language (~800 translations total).
-- Keys use dot notation grouped by feature: `topbar.*`, `sidebar.*`, `nav.*`, `di.*`, `dash.*`, `timeline.*`, `opt.*`, `vessel.*`, `alerts.*`.
+- `translations.ts` exports a `Record<LangCode, Record<string, string>>` with ~210 keys per language (~840 translations total).
+- Keys use dot notation grouped by feature: `topbar.*`, `sidebar.*`, `nav.*`, `di.*`, `dash.*`, `timeline.*`, `opt.*` (includes `opt.phase.*` and `opt.phases.*`), `vessel.*`, `alerts.*`.
 - `LanguageService` holds the active language in a `BehaviorSubject`.
 - `TranslatePipe` (`pure: false`) calls `LanguageService.t(key)` on every change-detection cycle — this ensures instant UI updates when the language is switched.
 - Language switcher lives in `TopbarComponent` (dropdown).

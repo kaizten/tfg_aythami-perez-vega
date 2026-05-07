@@ -218,22 +218,70 @@
             </div>
             <div class="flex-1 relative" [style.height]="laneHeight(berth.laneCount)">
               <div *ngFor="let vessel of berth.vessels"
-                   class="absolute h-10 flex items-center px-3 text-white text-[11px] font-bold shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden"
-                   [ngClass]="[vessel.colorClass, vessel.clipped ? 'rounded-l-lg' : 'rounded-lg']"
+                   class="absolute h-10 shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden flex"
+                   [ngClass]="[vessel.phaseSegments ? '' : vessel.colorClass, vessel.clipped ? 'rounded-l-lg' : 'rounded-lg']"
                    [style.left]="vessel.left"
                    [style.width]="vessel.width"
                    [style.top]="vessel.top"
                    [title]="vessel.name"
                    (click)="optimizerResult ? openOptimizerDetail(vessel) : openHistoricalDetail(vessel)">
-                <span class="truncate flex-1">{{ vessel.name }}</span>
-                <span *ngIf="vessel.clipped"
-                      class="material-symbols-outlined text-base flex-shrink-0 ml-1 opacity-90">
-                  keyboard_double_arrow_right
-                </span>
+
+                <!-- Phase segments (optimizer with phases available) -->
+                <ng-container *ngIf="vessel.phaseSegments; else solidBlock">
+                  <div *ngFor="let seg of vessel.phaseSegments"
+                       class="h-full flex-shrink-0"
+                       [ngClass]="seg.colorClass"
+                       [style.width]="seg.widthPct">
+                  </div>
+                  <div class="absolute inset-0 flex items-center px-2 pointer-events-none gap-1">
+                    <span class="text-white text-[11px] font-bold truncate flex-1 phase-label">{{ vessel.name }}</span>
+                    <span *ngIf="vessel.fondeoH !== undefined"
+                          class="flex items-center gap-0.5 flex-shrink-0 bg-black/25 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none">
+                      <span class="material-symbols-outlined text-[11px] text-amber-300">anchor</span>
+                      {{ vessel.fondeoH.toFixed(1) }}h
+                    </span>
+                    <span *ngIf="vessel.clipped"
+                          class="material-symbols-outlined text-base text-white opacity-90 flex-shrink-0">
+                      keyboard_double_arrow_right
+                    </span>
+                  </div>
+                </ng-container>
+
+                <!-- Solid block (historical or unassigned) -->
+                <ng-template #solidBlock>
+                  <div class="flex items-center px-2 w-full gap-1">
+                    <span class="text-white text-[11px] font-bold truncate flex-1">{{ vessel.name }}</span>
+                    <span *ngIf="vessel.clipped"
+                          class="material-symbols-outlined text-base text-white flex-shrink-0 opacity-90">
+                      keyboard_double_arrow_right
+                    </span>
+                  </div>
+                </ng-template>
               </div>
             </div>
           </div>
           <p *ngIf="!filteredGanttBerths.length" class="text-body-sm text-on-surface-variant py-md text-center">—</p>
+        </div>
+      </div>
+
+      <!-- Phase legend (optimizer mode only) -->
+      <div *ngIf="optimizerResult" class="flex flex-wrap items-center gap-lg px-lg py-md border-t border-slate-100 bg-slate-50/50">
+        <span class="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">{{ 'opt.phases.legend' | translate }}</span>
+        <div class="flex items-center gap-xs">
+          <div class="w-3 h-3 rounded-sm bg-sky-500"></div>
+          <span class="text-[10px] text-on-surface-variant">{{ 'opt.phase.atraque' | translate }}</span>
+        </div>
+        <div class="flex items-center gap-xs">
+          <div class="w-3 h-3 rounded-sm bg-emerald-500"></div>
+          <span class="text-[10px] text-on-surface-variant">{{ 'opt.phase.ejecucion' | translate }}</span>
+        </div>
+        <div class="flex items-center gap-xs">
+          <div class="w-3 h-3 rounded-sm bg-violet-500"></div>
+          <span class="text-[10px] text-on-surface-variant">{{ 'opt.phase.desatraque' | translate }}</span>
+        </div>
+        <div class="flex items-center gap-xs ml-auto text-[10px] text-on-surface-variant italic">
+          <span class="material-symbols-outlined text-sm text-amber-400">anchor</span>
+          {{ 'opt.phases.fondeo_hint' | translate }}
         </div>
       </div>
     </div>
@@ -245,5 +293,6 @@
 <app-vessel-detail-panel
   [vessel]="selectedVessel"
   [isOpen]="isPanelOpen"
-  (close)="isPanelOpen = false">
+  (close)="isPanelOpen = false"
+  (confirm)="confirmOperation()">
 </app-vessel-detail-panel>

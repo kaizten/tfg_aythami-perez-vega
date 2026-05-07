@@ -1,10 +1,22 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { interval, Subscription } from 'rxjs';
 import { startWith } from 'rxjs/operators';
-import { BerthCall, TransformApiResponse } from '../../../../core/models/api.models';
+import {
+  BerthCall,
+  OptimizationApiResult,
+  OptimizationAssignment,
+  TransformApiResponse,
+} from '../../../../core/models/api.models';
+import { OptimizationResultStoreService } from '../../../../core/services/optimization-result-store.service';
 import { TransformationStoreService } from '../../../../core/services/transformation-store.service';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────────
+
+interface PhaseSegment {
+  widthPct: string;
+  colorClass: string;
+  name: string;
+}
 
 interface GanttVessel {
   name: string;
@@ -14,6 +26,7 @@ interface GanttVessel {
   colorClass: string;
   clippedLeft: boolean;
   clippedRight: boolean;
+  phaseSegments?: PhaseSegment[];
 }
 
 interface GanttBerth {
@@ -31,6 +44,13 @@ const VESSEL_COLORS = [
   'bg-teal-500/90', 'bg-indigo-500/90', 'bg-amber-500/90',
   'bg-violet-500/90', 'bg-sky-500/90', 'bg-rose-500/90',
 ];
+
+const PHASE_COLORS: Record<string, string> = {
+  fondeo:    'bg-amber-400',
+  atraque:   'bg-sky-500',
+  ejecucion: 'bg-emerald-500',
+  desatraque:'bg-violet-500',
+};
 
 const HOUR_LABELS = [
   '00:00', '02:00', '04:00', '06:00', '08:00', '10:00',
@@ -81,18 +101,39 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
 
   isToday = false;
   currentTimeLeft = '';
+  isOptimizerMode = false;
 
   private dayStartsMs: number[] = [];
   private allCalls: BerthCall[] = [];
+  private allAssignments: OptimizationAssignment[] = [];
+  private lastTransformResult: TransformApiResponse | null = null;
   private subs: Subscription[] = [];
 
-  constructor(private transformStore: TransformationStoreService) {}
+  constructor(
+    private transformStore: TransformationStoreService,
+    private optimizerResultStore: OptimizationResultStoreService,
+  ) {}
 
   ngOnInit(): void {
     this.subs.push(
       this.transformStore.result$.subscribe(r => {
-        if (r) this.buildView(r);
-        else this.clearView();
+        this.lastTransformResult = r;
+        if (!this.isOptimizerMode) {
+          if (r) this.buildView(r);
+          else this.clearView();
+        }
+      }),
+      this.optimizerResultStore.result$.subscribe(r => {
+        if (r) {
+          this.isOptimizerMode = true;
+          this.allAssignments = r.assignments.filter(a => a.status === 'assigned');
+          this.buildViewFromAssignments();
+        } else {
+          this.isOptimizerMode = false;
+          this.allAssignments = [];
+          if (this.lastTransformResult) this.buildView(this.lastTransformResult);
+          else this.clearView();
+        }
       }),
       interval(60_000).pipe(startWith(0)).subscribe(() => this.updateNowLine()),
     );
@@ -109,7 +150,7 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
   prevDay(): void {
     if (this.selectedDayIndex > 0) {
       this.selectedDayIndex--;
-      this.buildDayView();
+      this.isOptimizerMode ? this.buildOptimizerDayView() : this.buildDayView();
       this.updateNowLine();
     }
   }
@@ -117,7 +158,7 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
   nextDay(): void {
     if (this.selectedDayIndex < this.availableDays.length - 1) {
       this.selectedDayIndex++;
-      this.buildDayView();
+      this.isOptimizerMode ? this.buildOptimizerDayView() : this.buildDayView();
       this.updateNowLine();
     }
   }
@@ -127,7 +168,7 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     const idx = this.dayStartsMs.indexOf(todayMs);
     if (idx >= 0) {
       this.selectedDayIndex = idx;
-      this.buildDayView();
+      this.isOptimizerMode ? this.buildOptimizerDayView() : this.buildDayView();
       this.updateNowLine();
     }
   }
@@ -228,6 +269,108 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
       // Label column is w-28 = 7rem; chart fills the rest of the container
       this.currentTimeLeft = `calc(${(ratio * 100).toFixed(4)}% + ${((1 - ratio) * 7).toFixed(4)}rem)`;
     }
+  }
+
+  private buildViewFromAssignments(): void {
+    if (!this.allAssignments.length) { this.clearView(); return; }
+
+    const daySet = new Set<number>();
+    for (const a of this.allAssignments) {
+      const s = floorToDay(new Date(a.scheduled_start).getTime());
+      const e = floorToDay(new Date(a.scheduled_end).getTime());
+      for (let d = s; d <= e; d += DAY_MS) daySet.add(d);
+    }
+
+    this.dayStartsMs = Array.from(daySet).sort((a, b) => a - b);
+    this.availableDays = this.dayStartsMs.map(ms =>
+      new Date(ms).toLocaleDateString('es-ES', {
+        weekday: 'short', day: 'numeric', month: 'short',
+      }),
+    );
+
+    const todayMs = floorToDay(Date.now());
+    const todayIdx = this.dayStartsMs.indexOf(todayMs);
+    this.selectedDayIndex = todayIdx >= 0 ? todayIdx : 0;
+
+    this.buildOptimizerDayView();
+    this.updateNowLine();
+  }
+
+  private buildOptimizerDayView(): void {
+    if (!this.allAssignments.length || !this.dayStartsMs.length) return;
+
+    const dayStart = this.dayStartsMs[this.selectedDayIndex];
+    const dayEnd = dayStart + DAY_MS;
+
+    const dayAssignments = this.allAssignments.filter(a => {
+      const s = new Date(a.scheduled_start).getTime();
+      const e = new Date(a.scheduled_end).getTime();
+      return s < dayEnd && e > dayStart;
+    });
+
+    const berthMap = new Map<string, OptimizationAssignment[]>();
+    for (const a of dayAssignments) {
+      if (!berthMap.has(a.berth_id)) berthMap.set(a.berth_id, []);
+      berthMap.get(a.berth_id)!.push(a);
+    }
+
+    const berths: GanttBerth[] = [];
+    for (const [berthId, assigns] of berthMap) {
+      const sorted = [...assigns].sort((x, y) =>
+        new Date(x.scheduled_start).getTime() - new Date(y.scheduled_start).getTime(),
+      );
+
+      const clampedTimings = sorted.map(a => ({
+        startMs: Math.max(new Date(a.scheduled_start).getTime(), dayStart),
+        endMs:   Math.min(new Date(a.scheduled_end).getTime(), dayEnd),
+      }));
+      const lanes = assignLanes(clampedTimings);
+
+      const vessels: GanttVessel[] = sorted.map((a, i) => {
+        const rawS = new Date(a.scheduled_start).getTime();
+        const rawE = new Date(a.scheduled_end).getTime();
+        const clippedLeft  = rawS < dayStart;
+        const clippedRight = rawE > dayEnd;
+        const visStart = clampedTimings[i].startMs;
+        const visEnd   = clampedTimings[i].endMs;
+        const visDur   = visEnd - visStart;
+
+        let phaseSegments: PhaseSegment[] | undefined;
+        if (a.phases?.length >= 4 && visDur > 0) {
+          const berthPhases = a.phases.filter(p => p.name !== 'fondeo');
+          const segments: PhaseSegment[] = [];
+          for (const phase of berthPhases) {
+            const ps = new Date(phase.start).getTime();
+            const pe = new Date(phase.end).getTime();
+            const visPhaseStart = Math.max(ps, visStart);
+            const visPhaseEnd   = Math.min(pe, visEnd);
+            if (visPhaseEnd > visPhaseStart) {
+              segments.push({
+                widthPct: `${((visPhaseEnd - visPhaseStart) / visDur * 100).toFixed(2)}%`,
+                colorClass: PHASE_COLORS[phase.name] ?? 'bg-slate-400',
+                name: phase.name,
+              });
+            }
+          }
+          if (segments.length) phaseSegments = segments;
+        }
+
+        return {
+          name:       a.vessel_id,
+          left:       ((visStart - dayStart) / DAY_MS * 100).toFixed(2) + '%',
+          width:      Math.max((visEnd - visStart) / DAY_MS * 100, 0.5).toFixed(2) + '%',
+          top:        `${lanes[i] * LANE_PX}px`,
+          colorClass: 'bg-teal-500/90',
+          clippedLeft,
+          clippedRight,
+          phaseSegments,
+        };
+      });
+
+      berths.push({ name: berthId, vessels, laneCount: Math.max(...lanes) + 1 });
+    }
+
+    this.ganttBerths = berths;
   }
 
   private clearView(): void {

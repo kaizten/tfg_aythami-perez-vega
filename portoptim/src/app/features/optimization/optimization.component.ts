@@ -2,6 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
 import {
   BerthCall,
+  OperationPhase,
   OptimizationApiRequest,
   OptimizationApiResult,
   OptimizationAssignment,
@@ -18,6 +19,12 @@ import { VesselDetail } from './components/vessel-detail-panel/vessel-detail-pan
 
 interface Kpi { label: string; value: string; sub: string; icon: string; positive: boolean; }
 
+interface PhaseSegment {
+  widthPct: string;
+  colorClass: string;
+  name: string;
+}
+
 interface GanttVessel {
   name: string;
   left: string;
@@ -29,6 +36,10 @@ interface GanttVessel {
   clipped: boolean;
   call?: BerthCall;
   assignment?: OptimizationAssignment;
+  /** Colored phase segments (atraque / ejecucion / desatraque) when optimizer data has phases. */
+  phaseSegments?: PhaseSegment[];
+  /** Fondeo (anchorage) duration in hours; only set in optimizer mode when phases are available. */
+  fondeoH?: number;
 }
 
 interface GanttBerth {
@@ -57,6 +68,13 @@ const VESSEL_COLORS = [
   'bg-teal-500/90', 'bg-indigo-500/90', 'bg-amber-500/90',
   'bg-violet-500/90', 'bg-sky-500/90', 'bg-rose-500/90',
 ];
+
+const PHASE_COLORS: Record<string, string> = {
+  fondeo:    'bg-amber-400',
+  atraque:   'bg-sky-500',
+  ejecucion: 'bg-emerald-500',
+  desatraque:'bg-violet-500',
+};
 
 const SOURCE_LABELS: Record<string, string> = {
   rate_model: 'Rate model',
@@ -119,6 +137,7 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   private transformResult: TransformApiResponse | null = null;
   private subs: Subscription[] = [];
+  private vesselStatusOverrides = new Map<string, string>();
 
   constructor(
     private transformStore: TransformationStoreService,
@@ -267,6 +286,29 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   resetOptimizer(): void {
     this.resultStore.clear();
     this.optimizerError = null;
+    this.vesselStatusOverrides.clear();
+  }
+
+  confirmOperation(): void {
+    const vessel = this.selectedVessel;
+    if (!vessel) return;
+
+    const current = vessel.status;
+    let next: string;
+    let nextColor: string;
+
+    if (current === 'vessel.status.on_the_way') {
+      next = 'vessel.status.in_progress';
+      nextColor = 'bg-amber-500';
+    } else if (current === 'vessel.status.in_progress') {
+      next = 'vessel.status.completed';
+      nextColor = 'bg-green-500';
+    } else {
+      return;
+    }
+
+    this.vesselStatusOverrides.set(vessel.name, next);
+    this.selectedVessel = { ...vessel, status: next, statusColor: nextColor };
   }
 
   // ── View builders ─────────────────────────────────────────────────────────
@@ -281,9 +323,17 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   private buildOptimizerView(result: OptimizationApiResult): void {
     const kpis = result.kpis;
+
+    const assigned = result.assignments.filter(a => a.status === 'assigned');
+    const totalFondeo = assigned.reduce((sum, a) => {
+      const fondeo = a.phases?.find(p => p.name === 'fondeo');
+      return sum + (fondeo?.duration_h ?? a.waiting_time_h);
+    }, 0);
+    const avgFondeo = assigned.length ? totalFondeo / assigned.length : 0;
+
     this.kpis = [
-      { label: 'opt.kpi.total_wait',   value: `${kpis.total_waiting_time_h.toFixed(1)} h`, sub: 'opt.kpi.total_wait_sub',   icon: 'hourglass_empty', positive: kpis.total_waiting_time_h < 1 },
-      { label: 'opt.kpi.avg_wait',     value: `${kpis.avg_waiting_time_h.toFixed(1)} h`,   sub: 'opt.kpi.avg_wait_sub',     icon: 'avg_pace',        positive: kpis.avg_waiting_time_h < 1 },
+      { label: 'opt.kpi.total_wait',   value: `${totalFondeo.toFixed(1)} h`, sub: 'opt.kpi.total_wait_sub',   icon: 'anchor', positive: totalFondeo < 1 },
+      { label: 'opt.kpi.avg_wait',     value: `${avgFondeo.toFixed(1)} h`,   sub: 'opt.kpi.avg_wait_sub',     icon: 'anchor', positive: avgFondeo < 1 },
       { label: 'opt.kpi.improvement',  value: `${kpis.improvement_vs_greedy_pct.toFixed(1)} %`, sub: 'opt.kpi.improvement_sub', icon: 'trending_up', positive: kpis.improvement_vs_greedy_pct >= 0 },
       { label: 'opt.kpi.unresolved',   value: String(kpis.unresolved_vessels),              sub: 'opt.kpi.unresolved_sub',   icon: 'warning',         positive: kpis.unresolved_vessels === 0 },
     ];
@@ -395,6 +445,21 @@ export class OptimizationComponent implements OnInit, OnDestroy {
           const clipped = e > win.endMs;
           const left  = (s - win.startMs) / win.durationMs * 100;
           const rawW  = (Math.min(e, win.endMs) - s) / win.durationMs * 100;
+
+          let phaseSegments: PhaseSegment[] | undefined;
+          if (a.status === 'assigned' && a.phases?.length >= 4) {
+            const berthPhases = a.phases.filter(p => p.name !== 'fondeo');
+            const total = berthPhases.reduce((acc, p) => acc + p.duration_h, 0);
+            if (total > 0) {
+              phaseSegments = berthPhases.map(p => ({
+                widthPct: `${(p.duration_h / total * 100).toFixed(2)}%`,
+                colorClass: PHASE_COLORS[p.name] ?? 'bg-slate-400',
+                name: p.name,
+              }));
+            }
+          }
+
+          const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
           return {
             name: a.vessel_id,
             left: left.toFixed(2) + '%',
@@ -405,6 +470,8 @@ export class OptimizationComponent implements OnInit, OnDestroy {
               : 'bg-red-400/70',
             clipped,
             assignment: a,
+            phaseSegments,
+            fondeoH: fondeoPhase?.duration_h,
           };
         });
 
@@ -496,12 +563,19 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   openOptimizerDetail(vessel: GanttVessel): void {
     const a = vessel.assignment!;
-    const started = new Date(a.scheduled_start) <= new Date();
-    const statusColor = started ? 'bg-amber-500' : 'bg-blue-400';
+    const override = this.vesselStatusOverrides.get(a.vessel_id);
+    const started   = new Date(a.scheduled_start) <= new Date();
+
+    const status = override
+      ?? (started ? 'vessel.status.in_progress' : 'vessel.status.on_the_way');
+    const statusColor =
+      status === 'vessel.status.completed' ? 'bg-green-500' :
+      status === 'vessel.status.in_progress' ? 'bg-amber-500' : 'bg-blue-400';
+
     this.selectedVessel = {
       name: a.vessel_id,
       imo: `Berth: ${a.berth_id}`,
-      status: started ? 'vessel.status.in_progress' : 'vessel.status.on_the_way',
+      status,
       statusColor,
       priority: 'GT Priority',
       type: a.duration_source,
@@ -519,6 +593,7 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       tugsRequired: a.tugs_required,
       tugsAssigned: a.tugs_assigned,
       optimizerStatus: a.status,
+      phases: a.phases?.length ? a.phases : undefined,
     };
     this.isPanelOpen = true;
   }
