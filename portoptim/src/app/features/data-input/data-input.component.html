@@ -169,9 +169,43 @@
 
       <!-- Optimization Parameters -->
       <div class="bg-white rounded-xl border border-slate-200 p-lg shadow-card">
-        <h4 class="text-label-md text-on-surface-variant mb-md uppercase tracking-widest">
-          {{ 'di.params.title' | translate }}
-        </h4>
+        <div class="flex items-center justify-between mb-md">
+          <h4 class="text-label-md text-on-surface-variant uppercase tracking-widest">
+            {{ 'di.params.title' | translate }}
+          </h4>
+          <div class="flex items-center gap-xs">
+            <button *ngIf="hasResult" type="button" (click)="exportConfig()"
+                    class="flex items-center gap-xs px-sm py-xs rounded border border-slate-200 text-[11px] text-slate-600 hover:bg-slate-50 transition-colors">
+              <span class="material-symbols-outlined text-sm">download</span>
+              {{ 'di.params.export' | translate }}
+            </button>
+            <label *ngIf="hasResult"
+                   class="flex items-center gap-xs px-sm py-xs rounded border border-slate-200 text-[11px] text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer">
+              <span class="material-symbols-outlined text-sm">upload</span>
+              {{ 'di.params.import' | translate }}
+              <input type="file" accept=".json" class="hidden" (change)="onImportFile($event)">
+            </label>
+          </div>
+        </div>
+
+        <!-- Saved config banner -->
+        <div *ngIf="savedConfigBanner"
+             class="mb-md rounded-lg border border-teal-200 bg-teal-50 p-sm flex items-center justify-between gap-sm">
+          <div class="flex items-center gap-xs min-w-0">
+            <span class="material-symbols-outlined text-teal-600 text-sm flex-shrink-0">history</span>
+            <span class="text-body-sm text-teal-800 truncate">{{ 'di.params.save_banner' | translate }}</span>
+          </div>
+          <div class="flex gap-xs flex-shrink-0">
+            <button type="button" (click)="applySavedConfig()"
+                    class="px-sm py-xs rounded text-[11px] font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors">
+              {{ 'di.params.save_load' | translate }}
+            </button>
+            <button type="button" (click)="dismissSavedConfig()"
+                    class="px-sm py-xs rounded text-[11px] text-slate-500 hover:bg-slate-100 transition-colors">
+              {{ 'di.params.save_dismiss' | translate }}
+            </button>
+          </div>
+        </div>
 
         <!-- Pilots & Tugs -->
         <div class="space-y-md mb-lg">
@@ -223,11 +257,19 @@
                  class="rounded-lg border border-slate-200 bg-slate-50 p-sm">
 
               <!-- Zone name -->
-              <div class="flex items-center gap-xs mb-xs">
-                <span class="material-symbols-outlined text-teal-600 text-sm flex-shrink-0">anchor</span>
-                <span class="text-body-sm font-medium text-on-surface truncate" [title]="zone.berth_id">
-                  {{ zone.berth_id }}
-                </span>
+              <div class="flex items-center justify-between gap-xs mb-xs">
+                <div class="flex items-center gap-xs min-w-0">
+                  <span class="material-symbols-outlined text-teal-600 text-sm flex-shrink-0">anchor</span>
+                  <span class="text-body-sm font-medium text-on-surface truncate" [title]="zone.berth_id">
+                    {{ zone.berth_id }}
+                  </span>
+                </div>
+                <button *ngIf="!isCsvBerth(zone.berth_id)" type="button"
+                        (click)="removeBerth(zone.berth_id)"
+                        class="flex-shrink-0 text-slate-400 hover:text-red-500 transition-colors"
+                        [title]="'di.params.remove_berth' | translate">
+                  <span class="material-symbols-outlined text-sm">close</span>
+                </button>
               </div>
 
               <!-- BAP type + value input -->
@@ -290,6 +332,25 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- Add berth -->
+          <div *ngIf="hasResult" class="mt-sm">
+            <div class="flex gap-xs">
+              <input type="text" [(ngModel)]="newBerthId" (keyup.enter)="addBerth()" (input)="newBerthError = false"
+                     [placeholder]="'di.params.add_berth_placeholder' | translate"
+                     [attr.aria-label]="'di.params.add_berth' | translate"
+                     class="flex-1 rounded px-xs py-1 text-body-sm border focus:outline-none transition"
+                     [ngClass]="newBerthError ? 'border-red-400 bg-red-50 focus:border-red-500' : 'border-slate-300 bg-white focus:border-teal-500'">
+              <button type="button" (click)="addBerth()"
+                      class="flex items-center gap-xs px-sm py-1 rounded bg-teal-600 text-white text-[11px] font-medium hover:bg-teal-700 transition-colors flex-shrink-0">
+                <span class="material-symbols-outlined text-sm">add</span>
+                {{ 'di.params.add_berth' | translate }}
+              </button>
+            </div>
+            <p *ngIf="newBerthError" class="text-[11px] text-red-500 mt-xs">
+              {{ 'di.params.berth_exists' | translate }}
+            </p>
           </div>
         </div>
 

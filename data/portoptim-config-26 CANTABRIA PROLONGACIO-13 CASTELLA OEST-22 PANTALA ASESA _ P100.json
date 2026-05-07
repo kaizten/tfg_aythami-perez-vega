@@ -1,0 +1,228 @@
+{
+  "num_pilots": 15,
+  "num_tugs": 15,
+  "mooring_zones": [
+    {
+      "berth_id": "26 CANTABRIA PROLONGACIO",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "13 CASTELLA OEST",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "22 PANTALA ASESA / P100",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "14 QUIMICA 1",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "16 QUIMICA 3",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "27 PANTALA REPSOL 11-S",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "28 PANTALA REPSOL 35-S",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "17 QUIMICA 4",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "02 CATALUNYA",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "03 ALCUDIA",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "15 QUIMICA 2",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "29 PANTALA REPSOL 35-T",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "24 GALICIA",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "04 NAVARRA",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "17C QUIMICA 7",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "05 ARAGO",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "11 RIOJA",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "23 ANDALUSIA",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "21 PANTALA ASESA / P20",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "30 PANTALA REPSOL 80-S",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "25 CANTABRIA",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "12 CASTELLA SUD",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "19 T.A.P.P.",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "32 MONOBOIA REPSOL",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "17B QUIMICA 6",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "18 TERMINAL EUROENERGO",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "34 FONDEIG ZONA II",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "09 REUS TESTER",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "01C BALEARS EXTERIOR",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    },
+    {
+      "berth_id": "01 PROLONG. DIC LLEVANT",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "10 REUS SUD",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "31 PANTALA REPSOL 80-T",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "01B BALEARS INTERIOR",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "17A QUIMICA 5",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "06 LLEIDA SUD",
+      "bap_type": "continuous",
+      "noray_max": 30,
+      "capacity": null
+    },
+    {
+      "berth_id": "20 PANTALA ASESA / P6",
+      "bap_type": "discrete",
+      "noray_max": null,
+      "capacity": 1
+    },
+    {
+      "berth_id": "ARAGO",
+      "bap_type": "continuous",
+      "noray_max": 40,
+      "capacity": null
+    }
+  ]
+}

@@ -51,6 +51,11 @@ export class DataInputComponent implements OnDestroy {
   optimizationParams: OptimizationParams = { num_pilots: null, num_tugs: null, mooring_zones: [] };
   /** True once the user has clicked "Proceed" at least once — enables inline error hints. */
   submitted = false;
+  savedConfigBanner = false;
+  private savedConfigForBerths: OptimizationParams | null = null;
+  newBerthId = '';
+  newBerthError = false;
+  private csvBerthIds = new Set<string>();
 
   private sub?: Subscription;
 
@@ -130,6 +135,8 @@ export class DataInputComponent implements OnDestroy {
     this.error = null;
     this.result = null;
     this.optimizationParams = { num_pilots: null, num_tugs: null, mooring_zones: [] };
+    this.newBerthId = '';
+    this.newBerthError = false;
     this.loading = true;
 
     this.sub = this.api.transformFile(file).subscribe({
@@ -151,11 +158,13 @@ export class DataInputComponent implements OnDestroy {
     this.submitted = true;
     if (!this.paramsValid) return;
     this.paramsStore.set(this.optimizationParams);
+    this.saveToStorage();
     this.router.navigate(['/optimization']);
   }
 
   ngOnDestroy(): void {
     this.paramsStore.set(this.optimizationParams);
+    this.saveToStorage();
     this.sub?.unsubscribe();
   }
 
@@ -166,6 +175,104 @@ export class DataInputComponent implements OnDestroy {
     );
     this.optimizationParams.mooring_zones = berths.map(id =>
       prev.get(id) ?? { berth_id: id, bap_type: 'continuous', noray_max: null, capacity: null }
+    );
+    this.csvBerthIds = new Set(berths);
+    const raw = localStorage.getItem(this.localStorageKey(berths));
+    if (raw) {
+      try {
+        this.savedConfigForBerths = JSON.parse(raw) as OptimizationParams;
+        this.savedConfigBanner = true;
+      } catch {
+        this.savedConfigForBerths = null;
+      }
+    }
+  }
+
+  // ── Config persistence ────────────────────────────────────────────────────
+
+  private localStorageKey(berths: string[]): string {
+    return 'portoptim_config_' + [...berths].sort().join('|');
+  }
+
+  private saveToStorage(): void {
+    if (!this.hasResult) return;
+    localStorage.setItem(this.localStorageKey(this.uniqueBerths), JSON.stringify(this.optimizationParams));
+  }
+
+  applySavedConfig(): void {
+    const saved = this.savedConfigForBerths;
+    if (!saved) return;
+    this.optimizationParams.num_pilots = saved.num_pilots;
+    this.optimizationParams.num_tugs = saved.num_tugs;
+    const savedMap = new Map(saved.mooring_zones.map(z => [z.berth_id, z]));
+    this.optimizationParams.mooring_zones = this.optimizationParams.mooring_zones.map(
+      z => savedMap.get(z.berth_id) ?? z
+    );
+    this.savedConfigBanner = false;
+  }
+
+  dismissSavedConfig(): void {
+    this.savedConfigBanner = false;
+  }
+
+  exportConfig(): void {
+    const json = JSON.stringify(this.optimizationParams, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portoptim-config-${this.uniqueBerths.slice(0, 3).join('-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  onImportFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string) as OptimizationParams;
+        if (typeof parsed.num_pilots === 'number') this.optimizationParams.num_pilots = parsed.num_pilots;
+        if (typeof parsed.num_tugs === 'number') this.optimizationParams.num_tugs = parsed.num_tugs;
+        if (Array.isArray(parsed.mooring_zones)) {
+          const importedMap = new Map(parsed.mooring_zones.map(z => [z.berth_id, z]));
+          this.optimizationParams.mooring_zones = this.optimizationParams.mooring_zones.map(
+            z => importedMap.get(z.berth_id) ?? z
+          );
+        }
+      } catch { /* invalid file — ignore */ }
+      input.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  // ── Berth management ──────────────────────────────────────────────────────
+
+  isCsvBerth(berthId: string): boolean {
+    return this.csvBerthIds.has(berthId);
+  }
+
+  addBerth(): void {
+    const id = this.newBerthId.trim();
+    if (!id) return;
+    if (this.optimizationParams.mooring_zones.some(z => z.berth_id === id)) {
+      this.newBerthError = true;
+      return;
+    }
+    this.optimizationParams.mooring_zones = [
+      ...this.optimizationParams.mooring_zones,
+      { berth_id: id, bap_type: 'continuous', noray_max: null, capacity: null },
+    ];
+    this.newBerthId = '';
+    this.newBerthError = false;
+  }
+
+  removeBerth(berthId: string): void {
+    if (this.csvBerthIds.has(berthId)) return;
+    this.optimizationParams.mooring_zones = this.optimizationParams.mooring_zones.filter(
+      z => z.berth_id !== berthId
     );
   }
 }
