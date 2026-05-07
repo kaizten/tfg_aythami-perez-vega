@@ -73,20 +73,57 @@
     <!-- Leaflet container — full width/height of explicit parent -->
     <div #mapEl class="w-full h-full"></div>
 
-    <!-- Legend overlay (z-index above Leaflet tiles but below popups) -->
-    <div class="absolute bottom-3 left-3 z-[1001] bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-md px-3 py-2 space-y-1 pointer-events-none select-none">
-      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
-        <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></span>
-        {{ 'dash.map.legend.underway' | translate }}
+    <!-- Bottom-left overlay: legend + map-mode toggle -->
+    <div class="absolute bottom-3 left-3 z-[1001] flex items-end gap-2 select-none pointer-events-none">
+
+      <!-- Legend -->
+      <div class="bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-md px-3 py-2 space-y-1">
+        <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+          <span class="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></span>
+          {{ 'dash.map.legend.underway' | translate }}
+        </div>
+        <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+          <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0"></span>
+          {{ 'dash.map.legend.anchor' | translate }}
+        </div>
+        <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+          {{ 'dash.map.legend.moored' | translate }}
+        </div>
       </div>
-      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
-        <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 flex-shrink-0"></span>
-        {{ 'dash.map.legend.anchor' | translate }}
-      </div>
-      <div class="flex items-center gap-2 text-[11px] font-medium text-slate-700">
-        <span class="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0"></span>
-        {{ 'dash.map.legend.moored' | translate }}
-      </div>
+
+      <!-- Map-mode toggle card (Google Maps style) -->
+      <button type="button"
+              aria-label="Switch map view"
+              (click)="setMapMode(mapMode === 'satellite' ? 'street' : 'satellite')"
+              class="pointer-events-auto w-[58px] rounded-lg overflow-hidden border-2 border-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer">
+        <!--
+          Thumbnail: zoom 7, tile x=58 y=53 — covers the full Canary Islands
+          including Gran Canaria (~55 % from left, ~66 % from top of the tile).
+          object-position focuses the crop on the island.
+        -->
+        <div class="h-[44px] overflow-hidden">
+          <img *ngIf="mapMode === 'street'"
+               src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/7/53/58"
+               class="w-full h-full object-cover"
+               class="map-mode-thumb"
+               alt="Satellite view"
+               draggable="false">
+          <img *ngIf="mapMode === 'satellite'"
+               src="https://tile.openstreetmap.org/7/58/53.png"
+               class="w-full h-full object-cover"
+               class="map-mode-thumb"
+               alt="Map view"
+               draggable="false">
+        </div>
+        <!-- Label: name of the mode you'll switch TO -->
+        <div class="py-[3px] text-center bg-white border-t border-slate-100">
+          <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wide leading-none">
+            {{ mapMode === 'satellite' ? 'Map' : 'Satellite' }}
+          </span>
+        </div>
+      </button>
+
     </div>
   </div>
 </div>

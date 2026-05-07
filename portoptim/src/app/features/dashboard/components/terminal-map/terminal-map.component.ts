@@ -39,6 +39,8 @@ function buildIcon(heading: number | null, navStatus: number | null): L.DivIcon 
 interface VesselTrack { marker: L.Marker; lastSeen: number; latlng: L.LatLng; }
 const STALE_MS = 10 * 60 * 1_000;
 
+type MapMode = 'satellite' | 'street';
+
 export interface NominatimResult {
   lat: string;
   lon: string;
@@ -55,7 +57,12 @@ export interface NominatimResult {
 export class TerminalMapComponent implements AfterViewInit, OnDestroy {
   @ViewChild('mapEl') private mapEl!: ElementRef<HTMLDivElement>;
 
+  mapMode: MapMode = 'street';
+
   private map!: L.Map;
+  private satelliteLayer!: L.TileLayer;
+  private labelsLayer!: L.TileLayer;
+  private streetLayer!: L.TileLayer;
   private vessels         = new Map<number, VesselTrack>();
   private positionBuffer  = new Map<number, AisVesselPosition>();
   private subs            = new Subscription();
@@ -81,7 +88,7 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
       preferCanvas: true,
     });
 
-    L.tileLayer(
+    this.satelliteLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
         attribution: 'Imagery &copy; <a href="https://www.esri.com" target="_blank">Esri</a>',
@@ -89,17 +96,29 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
         keepBuffer: 4,
         updateWhenIdle: false,
         updateWhenZooming: false,
-      }
-    ).addTo(this.map);
+      },
+    );
 
     const labelsPane = this.map.createPane('labels');
-    labelsPane.style.zIndex    = '450';
+    labelsPane.style.zIndex        = '450';
     labelsPane.style.pointerEvents = 'none';
-    L.tileLayer(
+    this.labelsLayer = L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
       { pane: 'labels', subdomains: 'abcd', maxZoom: 19, opacity: 0.85,
-        updateWhenIdle: false, updateWhenZooming: false }
-    ).addTo(this.map);
+        updateWhenIdle: false, updateWhenZooming: false },
+    );
+
+    this.streetLayer = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+        maxZoom: 19,
+        keepBuffer: 4,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
+      },
+    );
+    this.streetLayer.addTo(this.map);
 
     this.resizeObserver = new ResizeObserver(() => this.map.invalidateSize());
     this.resizeObserver.observe(el);
@@ -132,6 +151,20 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.subs.add(interval(3_000).pipe(take(1)).subscribe(() => this.flushBuffer()));
     this.subs.add(interval(20_000).subscribe(() => this.flushBuffer()));
     this.subs.add(interval(60_000).subscribe(() => this.purgeStale()));
+  }
+
+  setMapMode(mode: MapMode): void {
+    if (mode === this.mapMode) return;
+    this.mapMode = mode;
+    if (mode === 'satellite') {
+      this.streetLayer.remove();
+      this.satelliteLayer.addTo(this.map);
+      this.labelsLayer.addTo(this.map);
+    } else {
+      this.labelsLayer.remove();
+      this.satelliteLayer.remove();
+      this.streetLayer.addTo(this.map);
+    }
   }
 
   ngOnDestroy(): void {
