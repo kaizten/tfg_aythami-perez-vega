@@ -34,6 +34,27 @@ from .models import (
     required_tugs,
 )
 
+
+def estimate_maneuver_duration(
+    eslora: float,
+    grupo_mercancia: str,
+    calibration: Optional[Calibration],
+) -> float:
+    """
+    Estimated duration (h) of a single docking or undocking manoeuvre.
+
+    If a fitted Calibration is available its maneuver_model is queried first.
+    Fallback (when calibration is None or the bucket has too few observations):
+        0.5 + 0.3 * hazardous
+    which equals 0.5 h for normal cargo and 0.8 h for hazardous cargo —
+    always > 0 and safely conservative.
+    """
+    if calibration is not None:
+        return calibration.get_maneuver_duration(eslora, grupo_mercancia)
+    from .calibration import HAZARDOUS_CARGO_GROUPS
+    hazardous = grupo_mercancia in HAZARDOUS_CARGO_GROUPS
+    return 0.5 + (0.3 if hazardous else 0.0)
+
 logger = structlog.get_logger()
 
 
@@ -222,6 +243,7 @@ class Scheduler:
         num_pilots: int = 3,
         num_tugs: int = 2,
     ) -> None:
+        self.calibration = calibration
         self.estimator = DurationEstimator(
             calibration=calibration,
             default_duration_h=default_duration_h,
@@ -312,11 +334,15 @@ class Scheduler:
                 t_end = t_start + timedelta(hours=dur_h)
                 wait_h = max(0.0, (t_start - v.eta).total_seconds() / 3600)
 
+                maneuver_h = estimate_maneuver_duration(
+                    v.eslora, _cargo_group(v), self.calibration
+                )
+
                 # Commit: docking manoeuvre resources (t_start) + undocking (t_end)
-                self.pilots.allocate_n(1, t_start, DOCKING_DURATION_H)
-                self.pilots.allocate_n(1, t_end, DOCKING_DURATION_H)
-                self.tugs.allocate_n(n_tugs, t_start, DOCKING_DURATION_H)
-                self.tugs.allocate_n(n_tugs, t_end, DOCKING_DURATION_H)
+                self.pilots.allocate_n(1, t_start, maneuver_h)
+                self.pilots.allocate_n(1, t_end, maneuver_h)
+                self.tugs.allocate_n(n_tugs, t_start, maneuver_h)
+                self.tugs.allocate_n(n_tugs, t_end, maneuver_h)
                 _commit_slot(state, ns, ne, t_start, t_end, v.id, v.eslora)
 
                 logger.info(
