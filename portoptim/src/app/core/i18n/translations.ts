@@ -22,12 +22,15 @@ const en: TranslationMap = {
   'help.data-input.body':   'Upload a CSV or Excel file with vessel call records. The system validates and transforms the raw data, then lets you configure pilots, tugs, and mooring zone parameters before running the optimiser.',
   'help.optimization.title': 'Optimization',
   'help.optimization.body':  'The scheduling engine assigns vessels to berths to minimise waiting times and maximise berth utilisation. Review the Gantt chart and key performance indicators for the proposed schedule.',
+  'help.statistics.title':   'Statistics',
+  'help.statistics.body':    'Historical analysis of the loaded vessel data. Explore average stay durations, berth occupancy rates, and operation type distribution across months.',
 
   // ── Sidebar ─────────────────────────────────────────────────────────────
   'sidebar.subtitle':   'Terminal Operations',
   'sidebar.user_role':  'Chief Dispatcher',
   'nav.dashboard':      'Dashboard',
   'nav.data_input':     'Data Input',
+  'nav.statistics':     'Statistics',
   'nav.optimization':   'Optimization',
   'nav.history':        'History',
 
@@ -228,6 +231,58 @@ const en: TranslationMap = {
 
   // ── Berth timeline — optimizer badge ─────────────────────────────────────
   'timeline.optimizer_mode':  'Optimizer',
+
+  // ── Statistics page ───────────────────────────────────────────────────────
+  'stats.no_data.title':       'No dataset loaded',
+  'stats.no_data.body':        'Upload a port operations CSV to view historical statistics.',
+  'stats.no_data.cta':         'Go to Data Input',
+  'stats.title':               'Port Statistics',
+  'stats.subtitle':            'Historical analysis of vessel operations',
+  'stats.kpi.total_vessels':   'Total Vessels',
+  'stats.kpi.total_berths':    'Active Berths',
+  'stats.kpi.avg_duration':    'Avg. Duration',
+  'stats.kpi.date_range':      'Data Range',
+  'stats.kpi.vessels_sub':     'transformed port calls',
+  'stats.kpi.berths_sub':      'unique berth IDs',
+  'stats.kpi.duration_sub':    'per port call',
+  'stats.kpi.date_range_sub':  'dataset coverage',
+  'stats.dur.title':           'Average Stay Duration by Month',
+  'stats.dur.hint':            'Average stay duration (h) per vessel',
+  'stats.dur.unit':            'h avg',
+  'stats.dur.window':          'months',
+  'stats.occ.title':           'Berth Occupancy',
+  'stats.occ.hint':            'Vessel-hours occupied vs. total available hours in the month',
+  'stats.ops.title':           'Operation Type Distribution',
+  'stats.ops.hint':            'Vessel count by operation type',
+  'stats.vessels_this_month':  'vessels this month',
+
+  // ── Operation types ───────────────────────────────────────────────────────
+  'op.type.desembarque': 'Unloading',
+  'op.type.embarque':    'Loading',
+  'op.type.trasbordo':   'Transshipment',
+  'op.type.residuos':    'Waste',
+
+  // ── Statistics — new charts ───────────────────────────────────────────────
+  'stats.cargo.title':        'Cargo Volume by Month',
+  'stats.cargo.hint':         'Sum of cargo quantities from CSV data',
+  'stats.cargo_group.title':  'Cargo Group Distribution',
+  'stats.cargo_group.hint':   'Vessel count by cargo group',
+  'stats.hours.title':        'Arrival Distribution by Hour',
+  'stats.hours.hint':         'Number of vessel arrivals per hour of the day (full dataset)',
+  'stats.hours.peak':         'Busiest hour',
+
+  // ── Cargo groups ──────────────────────────────────────────────────────────
+  'cargo.group.abonos':                  'Fertilizers',
+  'cargo.group.agro_ganadero':           'Agro-Food & Livestock',
+  'cargo.group.energetico':              'Energy',
+  'cargo.group.materiales_construccion': 'Construction Materials',
+  'cargo.group.minerales_no_metalicos':  'Non-Metallic Minerals',
+  'cargo.group.otras_mercancias':        'Other Goods',
+  'cargo.group.quimicos':                'Chemicals',
+  'cargo.group.revisar':                 'Pending Review',
+  'cargo.group.sin_clasificar':          'Unclassified',
+  'cargo.group.siderometalurgico':       'Iron & Metal Industry',
+  'cargo.group.vehiculos_transporte':    'Vehicles & Transport',
 };
 
 const es: TranslationMap = {
@@ -241,11 +296,14 @@ const es: TranslationMap = {
   'help.data-input.body':    'Sube un fichero CSV o Excel con los datos de escalas. El sistema valida y transforma los datos, y permite configurar prácticos, remolcadores y zonas de atraque antes de ejecutar el optimizador.',
   'help.optimization.title': 'Optimización',
   'help.optimization.body':  'El motor de planificación asigna los buques a los muelles para minimizar tiempos de espera y maximizar la utilización. Revisa el diagrama de Gantt y los indicadores de rendimiento del plan propuesto.',
+  'help.statistics.title':   'Estadísticas',
+  'help.statistics.body':    'Análisis histórico de los datos de escalas cargados. Explora la duración media de estancia, la ocupación de muelles y la distribución de tipos de operación por mes.',
 
   'sidebar.subtitle':  'Operaciones Portuarias',
   'sidebar.user_role': 'Jefe de Despacho',
   'nav.dashboard':     'Panel de Control',
   'nav.data_input':    'Entrada de Datos',
+  'nav.statistics':    'Estadísticas',
   'nav.optimization':  'Optimización',
   'nav.history':       'Historial',
 
@@ -434,6 +492,58 @@ const es: TranslationMap = {
 
   // ── Línea de tiempo — badge optimizador ──────────────────────────────────
   'timeline.optimizer_mode':  'Optimizador',
+
+  // ── Página de estadísticas ────────────────────────────────────────────────
+  'stats.no_data.title':       'Sin datos cargados',
+  'stats.no_data.body':        'Sube un CSV de operaciones portuarias para ver las estadísticas históricas.',
+  'stats.no_data.cta':         'Ir a Entrada de Datos',
+  'stats.title':               'Estadísticas del Puerto',
+  'stats.subtitle':            'Análisis histórico de operaciones de buques',
+  'stats.kpi.total_vessels':   'Total de Escalas',
+  'stats.kpi.total_berths':    'Muelles Activos',
+  'stats.kpi.avg_duration':    'Duración Media',
+  'stats.kpi.date_range':      'Rango de Datos',
+  'stats.kpi.vessels_sub':     'escalas transformadas',
+  'stats.kpi.berths_sub':      'IDs de muelle únicos',
+  'stats.kpi.duration_sub':    'por escala',
+  'stats.kpi.date_range_sub':  'cobertura del conjunto de datos',
+  'stats.dur.title':           'Duración Media de Estancia por Mes',
+  'stats.dur.hint':            'Duración media de estancia (h) por buque',
+  'stats.dur.unit':            'h media',
+  'stats.dur.window':          'meses',
+  'stats.occ.title':           'Ocupación de Muelles',
+  'stats.occ.hint':            'Horas-buque ocupadas vs. horas disponibles totales del mes',
+  'stats.ops.title':           'Distribución por Tipo de Operación',
+  'stats.ops.hint':            'Número de buques por tipo de operación',
+  'stats.vessels_this_month':  'buques este mes',
+
+  // ── Tipos de operación ────────────────────────────────────────────────────
+  'op.type.desembarque': 'Desembarque',
+  'op.type.embarque':    'Embarque',
+  'op.type.trasbordo':   'Trasbordo',
+  'op.type.residuos':    'Residuos',
+
+  // ── Estadísticas — nuevas gráficas ────────────────────────────────────────
+  'stats.cargo.title':        'Volumen de Carga por Mes',
+  'stats.cargo.hint':         'Suma de las cantidades de carga del CSV',
+  'stats.cargo_group.title':  'Distribución por Grupo de Mercancía',
+  'stats.cargo_group.hint':   'Número de buques por grupo de mercancía',
+  'stats.hours.title':        'Distribución de Llegadas por Hora',
+  'stats.hours.hint':         'Número de llegadas de buques por hora del día (dataset completo)',
+  'stats.hours.peak':         'Hora punta',
+
+  // ── Grupos de mercancía ───────────────────────────────────────────────────
+  'cargo.group.abonos':                  'Abonos',
+  'cargo.group.agro_ganadero':           'Agro-Ganadero y Alimentario',
+  'cargo.group.energetico':              'Energético',
+  'cargo.group.materiales_construccion': 'Materiales de construcción',
+  'cargo.group.minerales_no_metalicos':  'Minerales no metálicos',
+  'cargo.group.otras_mercancias':        'Otras mercancías',
+  'cargo.group.quimicos':                'Químicos',
+  'cargo.group.revisar':                 'Por revisar',
+  'cargo.group.sin_clasificar':          'Sin clasificar',
+  'cargo.group.siderometalurgico':       'Siderometalúrgico',
+  'cargo.group.vehiculos_transporte':    'Vehículos y transporte',
 };
 
 const de: TranslationMap = {
@@ -447,11 +557,14 @@ const de: TranslationMap = {
   'help.data-input.body':    'Laden Sie eine CSV- oder Excel-Datei mit Schiffsanrufdaten hoch. Das System validiert und transformiert die Rohdaten. Konfigurieren Sie anschließend Lotsen, Schlepper und Liegeplatzparameter.',
   'help.optimization.title': 'Optimierung',
   'help.optimization.body':  'Die Optimierung plant Liegeplatz-Zuweisungen, um Wartezeiten zu minimieren und die Belegungsrate zu maximieren. Prüfen Sie das Gantt-Diagramm und die Leistungskennzahlen.',
+  'help.statistics.title':   'Statistiken',
+  'help.statistics.body':    'Historische Analyse der geladenen Schiffsdaten. Erkunden Sie durchschnittliche Liegezeiten, Liegeplatzbelegung und Betriebsartverteilung nach Monat.',
 
   'sidebar.subtitle':  'Terminalbetrieb',
   'sidebar.user_role': 'Leitdisponent',
   'nav.dashboard':     'Übersicht',
   'nav.data_input':    'Dateneingabe',
+  'nav.statistics':    'Statistiken',
   'nav.optimization':  'Optimierung',
   'nav.history':       'Verlauf',
 
@@ -640,6 +753,58 @@ const de: TranslationMap = {
 
   // ── Liegeplatzbelegung — Optimierer-Badge ─────────────────────────────────
   'timeline.optimizer_mode':  'Optimierer',
+
+  // ── Statistikseite ────────────────────────────────────────────────────────
+  'stats.no_data.title':       'Kein Datensatz geladen',
+  'stats.no_data.body':        'Laden Sie eine CSV-Datei mit Hafenoperationen hoch, um historische Statistiken anzuzeigen.',
+  'stats.no_data.cta':         'Zur Dateneingabe',
+  'stats.title':               'Hafenstatistiken',
+  'stats.subtitle':            'Historische Analyse der Schiffsoperationen',
+  'stats.kpi.total_vessels':   'Schiffsbesuche gesamt',
+  'stats.kpi.total_berths':    'Aktive Liegeplätze',
+  'stats.kpi.avg_duration':    'Ø Aufenthaltsdauer',
+  'stats.kpi.date_range':      'Datenbereich',
+  'stats.kpi.vessels_sub':     'transformierte Hafenbesuche',
+  'stats.kpi.berths_sub':      'einzigartige Liegeplatz-IDs',
+  'stats.kpi.duration_sub':    'pro Hafenbesuch',
+  'stats.kpi.date_range_sub':  'Datensatzabdeckung',
+  'stats.dur.title':           'Durchschnittliche Liegezeit pro Monat',
+  'stats.dur.hint':            'Durchschnittliche Liegezeit (h) pro Schiff',
+  'stats.dur.unit':            'h Ø',
+  'stats.dur.window':          'Monate',
+  'stats.occ.title':           'Liegeplatzbelegung',
+  'stats.occ.hint':            'Belegte Schiffsstunden vs. verfügbare Stunden im Monat',
+  'stats.ops.title':           'Betriebsartverteilung',
+  'stats.ops.hint':            'Schiffanzahl nach Betriebsart',
+  'stats.vessels_this_month':  'Schiffe diesen Monat',
+
+  // ── Betriebsarten ─────────────────────────────────────────────────────────
+  'op.type.desembarque': 'Entladung',
+  'op.type.embarque':    'Beladung',
+  'op.type.trasbordo':   'Umschlag',
+  'op.type.residuos':    'Abfall',
+
+  // ── Statistiken — neue Diagramme ──────────────────────────────────────────
+  'stats.cargo.title':        'Frachtvolumen pro Monat',
+  'stats.cargo.hint':         'Summe der Frachtmengen aus CSV-Daten',
+  'stats.cargo_group.title':  'Verteilung nach Frachtgruppe',
+  'stats.cargo_group.hint':   'Schiffanzahl nach Frachtgruppe',
+  'stats.hours.title':        'Ankunftsverteilung nach Stunde',
+  'stats.hours.hint':         'Anzahl der Schiffsankünfte pro Tagesstunde (gesamter Datensatz)',
+  'stats.hours.peak':         'Stoßzeit',
+
+  // ── Frachtgruppen ─────────────────────────────────────────────────────────
+  'cargo.group.abonos':                  'Düngemittel',
+  'cargo.group.agro_ganadero':           'Agrar- und Lebensmittel',
+  'cargo.group.energetico':              'Energie',
+  'cargo.group.materiales_construccion': 'Baumaterialien',
+  'cargo.group.minerales_no_metalicos':  'Nichtmetallische Mineralien',
+  'cargo.group.otras_mercancias':        'Sonstige Güter',
+  'cargo.group.quimicos':                'Chemikalien',
+  'cargo.group.revisar':                 'Zu prüfen',
+  'cargo.group.sin_clasificar':          'Nicht klassifiziert',
+  'cargo.group.siderometalurgico':       'Eisen- und Metallindustrie',
+  'cargo.group.vehiculos_transporte':    'Fahrzeuge & Transport',
 };
 
 const fr: TranslationMap = {
@@ -653,11 +818,14 @@ const fr: TranslationMap = {
   'help.data-input.body':    "Importez un fichier CSV ou Excel avec les données d'escale. Le système valide et transforme les données, puis vous permet de configurer les pilotes, remorqueurs et zones d'amarrage avant de lancer l'optimiseur.",
   'help.optimization.title': 'Optimisation',
   'help.optimization.body':  "Le moteur de planification attribue les navires aux postes à quai pour minimiser les temps d'attente et maximiser l'utilisation. Consultez le diagramme de Gantt et les indicateurs de performance.",
+  'help.statistics.title':   'Statistiques',
+  'help.statistics.body':    "Analyse historique des données de navires chargées. Explorez les durées moyennes de séjour, les taux d'occupation des postes et la distribution des types d'opération par mois.",
 
   'sidebar.subtitle':  "Opérations de terminal",
   'sidebar.user_role': 'Répartiteur en chef',
   'nav.dashboard':     'Tableau de bord',
   'nav.data_input':    'Saisie de données',
+  'nav.statistics':    'Statistiques',
   'nav.optimization':  'Optimisation',
   'nav.history':       'Historique',
 
@@ -846,6 +1014,58 @@ const fr: TranslationMap = {
 
   // ── Chronogramme — badge optimiseur ──────────────────────────────────────
   'timeline.optimizer_mode':  'Optimiseur',
+
+  // ── Page statistiques ─────────────────────────────────────────────────────
+  'stats.no_data.title':       'Aucune donnée chargée',
+  'stats.no_data.body':        "Importez un CSV d'opérations portuaires pour visualiser les statistiques historiques.",
+  'stats.no_data.cta':         'Aller à la saisie',
+  'stats.title':               'Statistiques portuaires',
+  'stats.subtitle':            'Analyse historique des opérations de navires',
+  'stats.kpi.total_vessels':   'Escales totales',
+  'stats.kpi.total_berths':    'Postes actifs',
+  'stats.kpi.avg_duration':    'Durée moy.',
+  'stats.kpi.date_range':      'Plage de données',
+  'stats.kpi.vessels_sub':     'escales transformées',
+  'stats.kpi.berths_sub':      'IDs de poste uniques',
+  'stats.kpi.duration_sub':    'par escale',
+  'stats.kpi.date_range_sub':  'couverture du jeu de données',
+  'stats.dur.title':           'Durée moyenne de séjour par mois',
+  'stats.dur.hint':            'Durée moyenne de séjour (h) par navire',
+  'stats.dur.unit':            'h moy.',
+  'stats.dur.window':          'mois',
+  'stats.occ.title':           "Occupation des postes",
+  'stats.occ.hint':            "Heures-navires occupées vs. heures disponibles dans le mois",
+  'stats.ops.title':           "Distribution par type d'opération",
+  'stats.ops.hint':            "Nombre de navires par type d'opération",
+  'stats.vessels_this_month':  'navires ce mois',
+
+  // ── Types d'opération ─────────────────────────────────────────────────────
+  'op.type.desembarque': 'Déchargement',
+  'op.type.embarque':    'Chargement',
+  'op.type.trasbordo':   'Transbordement',
+  'op.type.residuos':    'Déchets',
+
+  // ── Statistiques — nouveaux graphiques ────────────────────────────────────
+  'stats.cargo.title':        'Volume de fret par mois',
+  'stats.cargo.hint':         'Somme des quantités de fret des données CSV',
+  'stats.cargo_group.title':  'Distribution par groupe de fret',
+  'stats.cargo_group.hint':   'Nombre de navires par groupe de fret',
+  'stats.hours.title':        "Distribution des arrivées par heure",
+  'stats.hours.hint':         "Nombre d'arrivées de navires par heure de la journée (jeu de données complet)",
+  'stats.hours.peak':         'Heure de pointe',
+
+  // ── Groupes de fret ───────────────────────────────────────────────────────
+  'cargo.group.abonos':                  'Engrais',
+  'cargo.group.agro_ganadero':           'Agro-alimentaire & élevage',
+  'cargo.group.energetico':              'Énergie',
+  'cargo.group.materiales_construccion': 'Matériaux de construction',
+  'cargo.group.minerales_no_metalicos':  'Minéraux non métalliques',
+  'cargo.group.otras_mercancias':        'Autres marchandises',
+  'cargo.group.quimicos':                'Produits chimiques',
+  'cargo.group.revisar':                 'À vérifier',
+  'cargo.group.sin_clasificar':          'Non classifié',
+  'cargo.group.siderometalurgico':       'Industrie sidérurgique',
+  'cargo.group.vehiculos_transporte':    'Véhicules & transport',
 };
 
 export const translations: Record<LangCode, TranslationMap> = { en, es, de, fr };

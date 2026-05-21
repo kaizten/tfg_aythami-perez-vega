@@ -23,6 +23,13 @@ const routes: Routes = [
           ),
       },
       {
+        path: 'statistics',
+        loadChildren: () =>
+          import('./features/statistics/statistics.module').then(
+            (m) => m.StatisticsModule
+          ),
+      },
+      {
         path: 'optimization',
         loadChildren: () =>
           import('./features/optimization/optimization.module').then(

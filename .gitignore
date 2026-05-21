@@ -1,0 +1,18 @@
+# Memoria del TFG (gestionada en Overleaf)
+Memoria/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
