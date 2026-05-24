@@ -20,12 +20,38 @@
   <ng-container *ngIf="hasData">
 
     <!-- Header -->
-    <div class="flex justify-between items-end mb-xl">
+    <div class="flex justify-between items-center mb-xl">
       <div>
         <h3 class="text-h1 font-bold text-on-surface">{{ 'stats.title' | translate }}</h3>
         <p class="text-body-md text-on-surface-variant mt-xs">{{ 'stats.subtitle' | translate }}</p>
       </div>
+
+      <!-- Data-source toggle — only shown when optimizer has been run -->
+      <div *ngIf="hasOptimizerResult"
+           class="flex bg-surface-container-low border border-outline-variant rounded-xl p-1 gap-1">
+        <button type="button" (click)="setDataSource('csv')"
+                [ngClass]="dataSource === 'csv'
+                  ? 'bg-white shadow-sm text-on-surface'
+                  : 'text-on-surface-variant hover:text-on-surface'"
+                class="px-md py-xs text-label-md rounded-lg transition-all flex items-center gap-xs">
+          <span class="material-symbols-outlined text-base">table_view</span>
+          {{ 'stats.source.csv' | translate }}
+        </button>
+        <button type="button" (click)="setDataSource('optimizer')"
+                [ngClass]="dataSource === 'optimizer'
+                  ? 'bg-white shadow-sm text-on-surface'
+                  : 'text-on-surface-variant hover:text-on-surface'"
+                class="px-md py-xs text-label-md rounded-lg transition-all flex items-center gap-xs">
+          <span class="material-symbols-outlined text-base">auto_awesome</span>
+          {{ 'stats.source.optimizer' | translate }}
+        </button>
+      </div>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         CSV DATA VIEW
+         ══════════════════════════════════════════════════════════════════════ -->
+    <ng-container *ngIf="dataSource === 'csv'">
 
     <!-- ── KPI Cards ──────────────────────────────────────────────────────── -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
@@ -288,6 +314,567 @@
         </div>
       </div>
     </div>
+
+    </ng-container>
+    <!-- ── end CSV DATA VIEW ─────────────────────────────────────────────── -->
+
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         OPTIMIZER RESULTS VIEW
+         ══════════════════════════════════════════════════════════════════════ -->
+    <ng-container *ngIf="dataSource === 'optimizer'">
+
+      <!-- ── 1. KPI Cards (same layout as CSV) ─────────────────────────────── -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
+        <div *ngFor="let kpi of optiKpis"
+             class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
+          <div class="flex items-start justify-between">
+            <p class="text-label-sm text-on-surface-variant uppercase tracking-wider">{{ kpi.label | translate }}</p>
+            <span class="material-symbols-outlined text-teal-600">{{ kpi.icon }}</span>
+          </div>
+          <div class="mt-md">
+            <p class="text-h1 font-bold text-on-surface">{{ kpi.value }}</p>
+            <p class="text-body-sm text-teal-600 mt-xs">{{ kpi.sub | translate }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 2. Avg. Duration by month + Cargo by month (mirrors CSV chart) ── -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+
+        <!-- Dual header -->
+        <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200 border-b border-slate-200 bg-slate-50/50">
+          <div class="px-lg py-md flex justify-between items-center">
+            <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+              <span class="material-symbols-outlined text-teal-600">timer</span>
+              {{ 'stats.opt.dur.title' | translate }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.dur.hint' | translate }}</p>
+          </div>
+          <div class="px-lg py-md flex justify-between items-center">
+            <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+              <span class="material-symbols-outlined text-amber-500">inventory_2</span>
+              {{ 'stats.opt.cargo.title' | translate }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.cargo.hint' | translate }}</p>
+          </div>
+        </div>
+
+        <!-- Shared window navigation (mirrors CSV) -->
+        <div class="px-lg py-sm border-b border-slate-100 flex items-center gap-md bg-white">
+          <button type="button" (click)="prevOptiMonthWindow()"
+                  [disabled]="optiMonthWindowStart <= 0"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_left
+          </button>
+          <span class="text-body-sm font-semibold text-on-surface min-w-[220px] text-center">
+            {{ optiMonthWindowLabel }}
+          </span>
+          <button type="button" (click)="nextOptiMonthWindow()"
+                  [disabled]="optiMonthWindowStart + DUR_WINDOW >= optiMonths.length"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_right
+          </button>
+          <span class="text-body-sm text-on-surface-variant ml-auto">
+            {{ optiMonthWindowEnd }} / {{ optiMonths.length }} {{ 'stats.dur.window' | translate }}
+          </span>
+        </div>
+
+        <!-- Dual bars -->
+        <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+
+          <!-- Avg duration per month -->
+          <div class="p-lg space-y-sm">
+            <div *ngFor="let m of optiMonthWindow" class="flex items-center gap-md">
+              <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
+                {{ monthLabel(m.year, m.month) }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2.5">
+                <div class="bg-teal-500 h-2.5 rounded-full transition-all"
+                     [style.width]="(m.avgDuration / maxOptiDurValue * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-20 text-right flex-shrink-0">
+                {{ formatHours(m.avgDuration) }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-16 text-right flex-shrink-0 flex items-center justify-end gap-xs">
+                <span class="material-symbols-outlined text-sm">directions_boat</span>{{ m.vesselCount }}
+              </span>
+            </div>
+            <p *ngIf="!optiMonths.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+          </div>
+
+          <!-- Cargo per month -->
+          <div class="p-lg space-y-sm">
+            <div *ngFor="let m of optiMonthWindow" class="flex items-center gap-md">
+              <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
+                {{ monthLabel(m.year, m.month) }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2.5">
+                <div class="bg-amber-500 h-2.5 rounded-full transition-all"
+                     [style.width]="(m.totalQuantity / maxOptiCargoValue * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-20 text-right flex-shrink-0">
+                {{ formatQuantity(m.totalQuantity) }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-16 text-right flex-shrink-0 flex items-center justify-end gap-xs">
+                <span class="material-symbols-outlined text-sm text-amber-400">inventory_2</span>
+                {{ m.quantityRecords }}
+              </span>
+            </div>
+            <p *ngIf="!optiMonths.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 3. Berth occupancy + Op types + Cargo groups (mirrors CSV 3-col) ── -->
+      <div *ngIf="optiSelectedMonth" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+
+        <!-- Month navigation header (mirrors CSV month navigation) -->
+        <div class="px-lg py-md border-b border-slate-200 flex items-center gap-md bg-slate-50/50">
+          <button type="button" (click)="prevOptiMonth()"
+                  [disabled]="optiSelectedMonthIndex <= 0"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_left
+          </button>
+          <div class="flex-1">
+            <h4 class="text-h3 font-semibold text-on-surface">{{ monthLabel(optiSelectedMonth.year, optiSelectedMonth.month) }}</h4>
+            <p class="text-body-sm text-on-surface-variant">
+              {{ optiSelectedMonth.vesselCount }} {{ 'stats.vessels_this_month' | translate }}
+              <span class="text-slate-300 mx-xs">·</span>
+              {{ optiSelectedMonthIndex + 1 }} / {{ optiMonths.length }}
+            </p>
+          </div>
+          <button type="button" (click)="nextOptiMonth()"
+                  [disabled]="optiSelectedMonthIndex >= optiMonths.length - 1"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_right
+          </button>
+        </div>
+
+        <!-- Three columns -->
+        <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+
+          <!-- Berth occupancy -->
+          <div class="p-lg">
+            <h5 class="text-h3 font-semibold text-on-surface mb-xs flex items-center gap-sm">
+              <span class="material-symbols-outlined text-teal-600">dock</span>
+              {{ 'stats.occ.title' | translate }}
+            </h5>
+            <p class="text-body-sm text-on-surface-variant mb-md">{{ 'stats.occ.hint' | translate }}</p>
+            <div class="space-y-sm max-h-64 overflow-y-auto">
+              <div *ngFor="let b of optiSelectedMonth.berthOccupancy" class="flex items-center gap-md">
+                <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ b.berth }}</span>
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="bg-indigo-500 h-2 rounded-full transition-all" [style.width]="b.barPct + '%'"></div>
+                </div>
+                <span class="text-body-sm font-semibold text-on-surface w-12 text-right flex-shrink-0">{{ b.pct.toFixed(0) }}%</span>
+                <span class="text-body-sm text-on-surface-variant w-10 text-right flex-shrink-0 flex items-center justify-end gap-xs">
+                  <span class="material-symbols-outlined text-sm">directions_boat</span>{{ b.vesselCount }}
+                </span>
+              </div>
+              <p *ngIf="!optiSelectedMonth.berthOccupancy.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+            </div>
+          </div>
+
+          <!-- Operation types -->
+          <div class="p-lg">
+            <div class="flex items-start justify-between mb-xs">
+              <h5 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+                <span class="material-symbols-outlined text-teal-600">category</span>
+                {{ 'stats.ops.title' | translate }}
+              </h5>
+              <span class="flex items-center gap-xs text-body-sm text-on-surface-variant flex-shrink-0">
+                <span class="material-symbols-outlined text-sm">directions_boat</span>
+                {{ optiSelectedMonth.vesselCount }}
+              </span>
+            </div>
+            <p class="text-body-sm text-on-surface-variant mb-md">{{ 'stats.ops.hint' | translate }}</p>
+            <div class="space-y-sm max-h-64 overflow-y-auto">
+              <div *ngFor="let op of optiSelectedMonth.opBreakdown" class="flex items-center gap-md">
+                <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ op.type | translate }}</span>
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="bg-amber-500 h-2 rounded-full transition-all" [style.width]="op.pct + '%'"></div>
+                </div>
+                <span class="text-body-sm font-semibold text-on-surface w-10 text-right flex-shrink-0">{{ op.count }}</span>
+              </div>
+              <p *ngIf="!optiSelectedMonth.opBreakdown.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+            </div>
+          </div>
+
+          <!-- Cargo groups -->
+          <div class="p-lg">
+            <h5 class="text-h3 font-semibold text-on-surface mb-xs flex items-center gap-sm">
+              <span class="material-symbols-outlined text-teal-600">local_shipping</span>
+              {{ 'stats.cargo_group.title' | translate }}
+            </h5>
+            <p class="text-body-sm text-on-surface-variant mb-md">{{ 'stats.cargo_group.hint' | translate }}</p>
+            <div class="space-y-sm max-h-64 overflow-y-auto">
+              <div *ngFor="let cg of optiSelectedMonth.cargoBreakdown" class="flex items-center gap-md">
+                <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ cg.group | translate }}</span>
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="bg-violet-500 h-2 rounded-full transition-all" [style.width]="cg.pct + '%'"></div>
+                </div>
+                <span class="text-body-sm font-semibold text-on-surface w-10 text-right flex-shrink-0">{{ cg.count }}</span>
+              </div>
+              <p *ngIf="!optiSelectedMonth.cargoBreakdown.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 4. Docking & undocking phase-start distribution ──────────────── -->
+      <div *ngIf="optiScheduledHours.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+        <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+          <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+            <span class="material-symbols-outlined text-teal-600">schedule</span>
+            {{ 'stats.opt.hours.title' | translate }}
+          </h4>
+          <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.hours.hint' | translate }}</p>
+        </div>
+        <div class="px-lg pt-lg pb-sm">
+
+          <!-- Legend -->
+          <div class="flex items-center gap-lg mb-md">
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-3 h-3 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+              {{ 'opt.phase.atraque' | translate }}
+            </span>
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-3 h-3 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
+              {{ 'opt.phase.desatraque' | translate }}
+            </span>
+          </div>
+
+          <!-- Overlapping vertical bars -->
+          <div class="flex items-end gap-0.5 h-36 overflow-visible">
+            <div *ngFor="let h of optiScheduledHours"
+                 class="flex-1 min-w-0 h-full relative group cursor-default">
+
+              <!-- ── Custom tooltip ──────────────────────────────────────── -->
+              <div *ngIf="h.atraqueCount > 0 || h.desatraqueCount > 0"
+                   class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50
+                          opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                          pointer-events-none min-w-[130px]
+                          bg-white border border-slate-200 rounded-xl shadow-lg px-sm py-xs">
+                <!-- Hour range header -->
+                <p class="text-[10px] font-semibold text-on-surface-variant text-center
+                          pb-xs mb-xs border-b border-slate-100">
+                  {{ padHour(h.hour) }}:00 – {{ h.hour + 1 < 24 ? padHour(h.hour + 1) : '00' }}:00
+                </p>
+                <!-- Atraque row -->
+                <div class="flex items-center justify-between gap-sm">
+                  <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
+                    <span class="w-2 h-2 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+                    {{ 'opt.phase.atraque' | translate }}
+                  </span>
+                  <strong class="text-[11px] text-on-surface">{{ h.atraqueCount }}</strong>
+                </div>
+                <!-- Desatraque row -->
+                <div class="flex items-center justify-between gap-sm mt-xs">
+                  <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
+                    <span class="w-2 h-2 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
+                    {{ 'opt.phase.desatraque' | translate }}
+                  </span>
+                  <strong class="text-[11px] text-on-surface">{{ h.desatraqueCount }}</strong>
+                </div>
+              </div>
+
+              <!-- ── Bars ────────────────────────────────────────────────── -->
+              <!-- Empty-hour indicator -->
+              <div *ngIf="h.atraqueCount === 0 && h.desatraqueCount === 0"
+                   class="phase-bar-empty absolute bottom-0 left-0 right-0 bg-slate-200 rounded-t-sm"></div>
+              <!-- Atraque bar (sky blue — behind) -->
+              <div *ngIf="h.atraqueCount > 0"
+                   class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-sky-500"
+                   [style.height]="h.atraquePct + '%'"></div>
+              <!-- Desatraque bar (violet — in front, 80% opacity so blue shows through overlap) -->
+              <div *ngIf="h.desatraqueCount > 0"
+                   class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-violet-500 opacity-80"
+                   [style.height]="h.desatraquePct + '%'"></div>
+            </div>
+          </div>
+
+          <!-- Hour labels -->
+          <div class="flex gap-0.5 mt-xs">
+            <div *ngFor="let h of optiScheduledHours" class="flex-1 min-w-0 text-center">
+              <span class="text-[9px] text-on-surface-variant leading-none">{{ padHour(h.hour) }}</span>
+            </div>
+          </div>
+
+          <!-- Footer: peak hour per phase -->
+          <div class="flex justify-center gap-xl mt-md pt-md border-t border-slate-100">
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+              {{ 'opt.phase.atraque' | translate }}
+              <span class="text-slate-300 mx-xs">·</span>
+              {{ 'stats.hours.peak' | translate }}:
+              <strong class="text-on-surface ml-xs">
+                {{ padHour(optiPeakAtraqueHour) }}:00 – {{ optiPeakAtraqueHour + 1 < 24 ? padHour(optiPeakAtraqueHour + 1) : '00' }}:00
+              </strong>
+            </span>
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
+              {{ 'opt.phase.desatraque' | translate }}
+              <span class="text-slate-300 mx-xs">·</span>
+              {{ 'stats.hours.peak' | translate }}:
+              <strong class="text-on-surface ml-xs">
+                {{ padHour(optiPeakDesatraqueHour) }}:00 – {{ optiPeakDesatraqueHour + 1 < 24 ? padHour(optiPeakDesatraqueHour + 1) : '00' }}:00
+              </strong>
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── 5. [EXTRA] Operation Phases + Anchorage by berth ─────────────────── -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-lg mb-xl">
+
+        <!-- Phase breakdown -->
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+          <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+            <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+              <span class="material-symbols-outlined text-teal-600">view_timeline</span>
+              {{ 'stats.opt.phases.title' | translate }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.phases.hint' | translate }}</p>
+          </div>
+          <div class="p-lg space-y-md">
+            <div *ngFor="let p of optiPhases" class="flex items-center gap-md">
+              <div class="flex items-center gap-xs w-28 flex-shrink-0 justify-end pr-sm">
+                <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" [ngClass]="p.colorClass"></div>
+                <span class="text-body-sm text-on-surface-variant truncate">{{ ('opt.phase.' + p.name) | translate }}</span>
+              </div>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="h-2 rounded-full transition-all" [ngClass]="p.colorClass" [style.width]="p.barPct + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-16 text-right flex-shrink-0">{{ formatHours(p.totalH) }}</span>
+              <span class="text-body-sm text-on-surface-variant w-16 text-right flex-shrink-0">Ø {{ formatHours(p.avgH) }}</span>
+            </div>
+            <p *ngIf="!optiPhases.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+          </div>
+        </div>
+
+        <!-- Anchorage hours per berth -->
+        <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
+          <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+            <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+              <span class="material-symbols-outlined text-amber-500">anchor</span>
+              {{ 'stats.opt.berth_anchor.title' | translate }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.berth_anchor.hint' | translate }}</p>
+          </div>
+          <div class="p-lg">
+            <div class="space-y-sm max-h-64 overflow-y-auto">
+              <div *ngFor="let b of optiBerthAnchorage" class="flex items-center gap-md">
+                <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ b.berth }}</span>
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="bg-amber-400 h-2 rounded-full transition-all" [style.width]="b.barPct + '%'"></div>
+                </div>
+                <span class="text-body-sm font-semibold text-on-surface w-16 text-right flex-shrink-0">{{ formatHours(b.totalFondeoH) }}</span>
+                <span class="text-body-sm text-on-surface-variant w-14 text-right flex-shrink-0 flex items-center justify-end gap-xs">
+                  <span class="material-symbols-outlined text-sm">directions_boat</span>{{ b.vesselCount }}
+                </span>
+              </div>
+              <p *ngIf="!optiBerthAnchorage.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 5b. [EXTRA] Anchorage Wait Distribution — vertical bars ────────── -->
+      <div *ngIf="optiWaitBuckets.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+        <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+          <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+            <span class="material-symbols-outlined text-amber-500">hourglass_top</span>
+            {{ 'stats.opt.wait.title' | translate }}
+          </h4>
+          <p class="text-body-sm text-on-surface-variant">{{ 'stats.opt.wait.hint' | translate }}</p>
+        </div>
+        <div class="px-lg pt-lg pb-sm">
+          <!-- Vertical bars -->
+          <div class="flex items-end gap-lg h-40">
+            <div *ngFor="let w of optiWaitBuckets"
+                 class="flex-1 flex flex-col items-center justify-end h-full gap-xs">
+              <!-- Count label above bar -->
+              <span class="text-body-sm font-bold text-on-surface">{{ w.count }}</span>
+              <!-- Bar -->
+              <div class="w-full rounded-t-md transition-all bg-amber-400"
+                   [style.height]="(w.barPct || 1) + '%'"></div>
+            </div>
+          </div>
+          <!-- Short labels below bars -->
+          <div class="flex gap-lg mt-sm">
+            <div *ngFor="let w of optiWaitBuckets" class="flex-1 text-center">
+              <span class="text-[11px] text-on-surface-variant font-medium leading-none">{{ w.shortLabel }}</span>
+            </div>
+          </div>
+          <!-- Long labels (translated) below -->
+          <div class="flex gap-lg mt-xs">
+            <div *ngFor="let w of optiWaitBuckets" class="flex-1 text-center">
+              <span class="text-[10px] text-on-surface-variant leading-none">{{ w.labelKey | translate }}</span>
+            </div>
+          </div>
+          <!-- Peak summary -->
+          <div class="flex justify-center mt-md pt-md border-t border-slate-100">
+            <p class="text-body-sm text-on-surface-variant">
+              {{ 'stats.opt.wait.avg' | translate }}:
+              <strong class="text-on-surface">{{ formatHours(optiAvgWaitH) }}</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 6. [EXTRA] Duration sources ─────────────────────────────────────── -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+        <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+          <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+            <span class="material-symbols-outlined text-teal-600">model_training</span>
+            {{ 'stats.opt.dur_source.title' | translate }}
+          </h4>
+          <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.dur_source.hint' | translate }}</p>
+        </div>
+        <div class="p-lg space-y-sm">
+          <div *ngFor="let ds of optiDurSources" class="flex items-center gap-md">
+            <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ ds.labelKey | translate }}</span>
+            <div class="flex-1 bg-slate-100 rounded-full h-2">
+              <div class="bg-sky-500 h-2 rounded-full transition-all" [style.width]="ds.pct + '%'"></div>
+            </div>
+            <span class="text-body-sm font-semibold text-on-surface w-10 text-right flex-shrink-0">{{ ds.count }}</span>
+            <span class="text-body-sm text-on-surface-variant w-12 text-right flex-shrink-0">{{ ds.pct.toFixed(0) }}%</span>
+          </div>
+          <p *ngIf="!optiDurSources.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+        </div>
+      </div>
+
+      <!-- ── 7. [EXTRA] Resource Allocation by Month ───────────────────────── -->
+      <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+
+        <!-- Header -->
+        <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-start">
+          <div>
+            <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
+              <span class="material-symbols-outlined text-teal-600">engineering</span>
+              {{ 'stats.opt.resources.title' | translate }}
+            </h4>
+            <p class="text-body-sm text-on-surface-variant mt-xs">{{ 'stats.opt.resources.hint' | translate }}</p>
+          </div>
+          <!-- Methodology badge -->
+          <div class="hidden lg:flex flex-col items-end gap-xs text-[11px] text-on-surface-variant leading-snug text-right">
+            <span class="flex items-center gap-xs">
+              <span class="material-symbols-outlined text-sm text-amber-500">info</span>
+              {{ 'stats.opt.resources.method_phases' | translate }}
+            </span>
+            <span>{{ 'stats.opt.resources.method_constraint' | translate }}</span>
+          </div>
+        </div>
+
+        <!-- Window navigation -->
+        <div class="px-lg py-sm border-b border-slate-100 flex items-center gap-md bg-white">
+          <button type="button" (click)="prevOptiResourceWindow()"
+                  [disabled]="optiResourceWindowStart <= 0"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_left
+          </button>
+          <span class="text-body-sm font-semibold text-on-surface min-w-[220px] text-center">
+            {{ optiResourceWindowLabel }}
+          </span>
+          <button type="button" (click)="nextOptiResourceWindow()"
+                  [disabled]="optiResourceWindowStart + DUR_WINDOW >= optiMonths.length"
+                  class="material-symbols-outlined text-on-surface-variant hover:text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors select-none">
+            chevron_right
+          </button>
+          <span class="text-body-sm text-on-surface-variant ml-auto">
+            {{ optiResourceWindowEnd }} / {{ optiMonths.length }} {{ 'stats.dur.window' | translate }}
+          </span>
+        </div>
+
+        <!-- Chart body -->
+        <div class="p-lg">
+
+          <!-- Legend -->
+          <div class="flex flex-wrap items-center gap-lg mb-lg">
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-3 h-3 rounded-sm bg-teal-500 inline-block flex-shrink-0"></span>
+              {{ 'stats.opt.resources.pilots' | translate }}
+            </span>
+            <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+              <span class="w-3 h-3 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+              {{ 'stats.opt.resources.tugs' | translate }}
+            </span>
+          </div>
+
+          <!-- ── Yearly peak summary ─────────────────────────────────────── -->
+          <div *ngIf="optiYearResources.length" class="mb-lg">
+            <p class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-sm">
+              {{ 'stats.opt.resources.year_peak' | translate }}
+            </p>
+            <div class="flex flex-wrap gap-sm">
+              <div *ngFor="let y of optiYearResources"
+                   class="flex items-center gap-sm px-md py-sm bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-label-sm font-bold text-on-surface">{{ y.year }}</span>
+                <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
+                <span class="flex items-center gap-xs text-body-sm">
+                  <span class="material-symbols-outlined text-sm text-teal-600">person</span>
+                  <strong class="text-on-surface">{{ y.pilotsNeededFte }}</strong>
+                  <span class="text-on-surface-variant">{{ 'stats.opt.resources.pilots' | translate }}</span>
+                </span>
+                <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
+                <span class="flex items-center gap-xs text-body-sm">
+                  <span class="material-symbols-outlined text-sm text-sky-500">directions_boat</span>
+                  <strong class="text-on-surface">{{ y.tugsNeededFte }}</strong>
+                  <span class="text-on-surface-variant">{{ 'stats.opt.resources.tugs' | translate }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Month groups (horizontal bars) -->
+          <div class="space-y-lg">
+            <ng-container *ngFor="let m of optiResourceWindow">
+              <div class="space-y-xs">
+
+                <!-- Month label -->
+                <p class="text-label-sm font-semibold text-on-surface">{{ monthLabel(m.year, m.month) }}</p>
+
+                <!-- Pilots row -->
+                <div class="flex items-center gap-md">
+                  <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
+                    <span class="material-symbols-outlined text-sm text-teal-600">person</span>
+                    {{ 'stats.opt.resources.pilots' | translate }}
+                  </span>
+                  <div class="flex-1 bg-slate-100 rounded-full h-3">
+                    <div class="bg-teal-500 h-3 rounded-full transition-all"
+                         [style.width]="(maxOptiResourcePilots > 0 ? m.pilotsNeededFte / maxOptiResourcePilots * 100 : 0) + '%'"></div>
+                  </div>
+                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0">
+                    {{ m.pilotsNeededFte }}
+                  </span>
+                </div>
+
+                <!-- Tugs row -->
+                <div class="flex items-center gap-md">
+                  <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
+                    <span class="material-symbols-outlined text-sm text-sky-500">directions_boat</span>
+                    {{ 'stats.opt.resources.tugs' | translate }}
+                  </span>
+                  <div class="flex-1 bg-slate-100 rounded-full h-3">
+                    <div class="bg-sky-500 h-3 rounded-full transition-all"
+                         [style.width]="(maxOptiResourceTugs > 0 ? m.tugsNeededFte / maxOptiResourceTugs * 100 : 0) + '%'"></div>
+                  </div>
+                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0">
+                    {{ m.tugsNeededFte }}
+                  </span>
+                </div>
+
+              </div>
+            </ng-container>
+            <p *ngIf="!optiResourceWindow.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
+          </div>
+        </div>
+      </div>
+
+    </ng-container>
+    <!-- ── end OPTIMIZER RESULTS VIEW ────────────────────────────────────── -->
 
   </ng-container>
 

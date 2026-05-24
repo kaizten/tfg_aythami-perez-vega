@@ -11,7 +11,7 @@ import {
 import { LanguageService } from '../../core/services/language.service';
 import { OptimizationParamsStoreService } from '../../core/services/optimization-params-store.service';
 import { OptimizationResultStoreService } from '../../core/services/optimization-result-store.service';
-import { PortOptimApiService } from '../../core/services/portoptim-api.service';
+import { OptimizationRunnerService } from '../../core/services/optimization-runner.service';
 import { TransformationStoreService } from '../../core/services/transformation-store.service';
 import { VesselDetail } from './components/vessel-detail-panel/vessel-detail-panel.component';
 
@@ -40,6 +40,10 @@ interface GanttVessel {
   phaseSegments?: PhaseSegment[];
   /** Fondeo (anchorage) duration in hours; only set in optimizer mode when phases are available. */
   fondeoH?: number;
+  /** True when the operation is past its scheduled end but within the 5 h grace window (not yet completed). */
+  showWarning?: boolean;
+  /** True when the bar starts before this window (continues from the previous window). */
+  carryOver?: boolean;
 }
 
 interface GanttBerth {
@@ -118,10 +122,13 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   // ── State ────────────────────────────────────────────────────────────────
 
   hasData = false;
-  isRunning = false;
-  optimizerError: string | null = null;
   isPanelOpen = false;
   selectedVessel: VesselDetail | null = null;
+
+  // isRunning and optimizerError are surfaced as getters from the runner service
+  // so the run continues even when the user navigates away from this page.
+  get isRunning(): boolean       { return this.runner.isRunning; }
+  get optimizerError(): string | null { return this.runner.error; }
 
   kpis: Kpi[] = [];
   ganttBerths: GanttBerth[] = [];
@@ -138,16 +145,20 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   private transformResult: TransformApiResponse | null = null;
   private subs: Subscription[] = [];
   private vesselStatusOverrides = new Map<string, string>();
+  private vesselDelayHours      = new Map<string, number>();
 
   constructor(
     private transformStore: TransformationStoreService,
     private paramsStore: OptimizationParamsStoreService,
     private resultStore: OptimizationResultStoreService,
-    private api: PortOptimApiService,
     private lang: LanguageService,
+    readonly runner: OptimizationRunnerService,
   ) {}
 
   ngOnInit(): void {
+    // Dismiss the completion toast when the user navigates back to this page.
+    this.runner.dismissNotification();
+
     this.subs.push(
       this.transformStore.result$.subscribe(r => {
         this.transformResult = r;
@@ -243,10 +254,8 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     const result = this.transformResult;
     if (!params || !result) return;
 
-    this.isRunning = true;
-    this.optimizerError = null;
-    this.resultStore.clear();
-
+    // Build the request and hand it off to the singleton runner service.
+    // The HTTP subscription lives in the service — it survives navigation.
     const request: OptimizationApiRequest = {
       vessels: result.data.map(call => ({
         id: call.call_id,
@@ -270,23 +279,31 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       },
     };
 
-    const sub = this.api.runOptimization(request).subscribe({
-      next: res => {
-        this.resultStore.set(res);
-        this.isRunning = false;
-      },
-      error: (err: Error) => {
-        this.optimizerError = err.message;
-        this.isRunning = false;
-      },
-    });
-    this.subs.push(sub);
+    this.runner.run(request);
   }
 
   resetOptimizer(): void {
+    this.runner.cancelRun();
     this.resultStore.clear();
-    this.optimizerError = null;
+    this.runner.clearError();
     this.vesselStatusOverrides.clear();
+    this.vesselDelayHours.clear();
+  }
+
+  applyDelay(delayHours: number): void {
+    const vessel = this.selectedVessel;
+    if (!vessel || !this.optimizerResult) return;
+
+    const current = this.vesselDelayHours.get(vessel.name) ?? 0;
+    this.vesselDelayHours.set(vessel.name, current + delayHours);
+
+    // Rebuild gantt with new delay applied
+    this.buildOptimizerView(this.optimizerResult);
+
+    // Re-open the detail panel for the same vessel with updated times
+    const updated = this.filteredGanttBerths.flatMap(b => b.vessels).find(v => v.name === vessel.name)
+                 ?? this.ganttWindows.flatMap(w => w.berths).flatMap(b => b.vessels).find(v => v.name === vessel.name);
+    if (updated) this.openOptimizerDetail(updated);
   }
 
   confirmOperation(): void {
@@ -315,10 +332,12 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   private buildHistoricalView(result: TransformApiResponse): void {
     this.kpis = this.historicalKpis(result.data, result);
+    // Gantt is only built after the optimizer runs — reset any stale windows
     this.ganttWindows = [];
     this.availableDates = [];
     this.selectedDateIndex = 0;
-    this.buildHistoricalGantt(result.data);
+    this.ganttHours  = [];
+    this.ganttBerths = [];
   }
 
   private buildOptimizerView(result: OptimizationApiResult): void {
@@ -407,18 +426,87 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     this.ganttBerths = first?.berths ?? [];
   }
 
+  /**
+   * Returns the CSS classes for a Gantt bar's background and border-radius.
+   * - Neither edge clipped → rounded-lg (all corners)
+   * - Only right edge clipped → rounded-l-lg (left corners only)
+   * - Only left edge clipped (carry-over) → rounded-r-lg (right corners only)
+   * - Both edges clipped → no rounding (rectangular)
+   */
+  ganttBarClass(vessel: GanttVessel): string {
+    const bg = vessel.phaseSegments ? '' : vessel.colorClass;
+    let rounding: string;
+    if (!vessel.clipped && !vessel.carryOver) rounding = 'rounded-lg';
+    else if (vessel.clipped && !vessel.carryOver)  rounding = 'rounded-l-lg';
+    else if (!vessel.clipped && vessel.carryOver)   rounding = 'rounded-r-lg';
+    else rounding = '';
+    return bg ? `${bg} ${rounding}` : rounding;
+  }
+
+  /** Converts a decimal hour value to "HH:MM" string (e.g. 1.75 → "01:45"). */
+  hoursToHHMM(h: number): string {
+    const totalMin = Math.round(h * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
+  /**
+   * Vertical grid lines for the Gantt content area.
+   * Returns one entry per line, ordered left-to-right:
+   *   noon = true  → dashed lighter line at midday of each day
+   *   noon = false → solid line at each midnight (day boundary)
+   */
+  get ganttGridLines(): { left: string; noon: boolean }[] {
+    const lines: { left: string; noon: boolean }[] = [];
+    for (let d = 0; d < WINDOW_DAYS; d++) {
+      // Midday of day d
+      lines.push({ left: `${((d + 0.5) / WINDOW_DAYS * 100).toFixed(2)}%`, noon: true });
+      // Midnight between day d and d+1 (skip the very last — it's the right edge)
+      if (d < WINDOW_DAYS - 1) {
+        lines.push({ left: `${((d + 1) / WINDOW_DAYS * 100).toFixed(2)}%`, noon: false });
+      }
+    }
+    return lines;
+  }
+
+  /** Returns the fondeo start (vessel arrival time) for an assignment.
+   *  Falls back to scheduled_start − waiting_time_h when phases are absent. */
+  private fondeoStartMs(a: OptimizationAssignment): number {
+    const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
+    if (fondeoPhase) return new Date(fondeoPhase.start).getTime();
+    return new Date(a.scheduled_start).getTime() - a.waiting_time_h * 3_600_000;
+  }
+
   private buildOptimizerGantt(assignments: OptimizationAssignment[]): void {
     const visible = assignments.filter(a => a.status !== 'invalid_berth');
     if (!visible.length) return;
 
-    const startTimes = visible.map(a => new Date(a.scheduled_start).getTime());
+    // Windows are anchored to vessel arrival (fondeo start).
+    const startTimes = visible.map(a => this.fondeoStartMs(a));
     const windows = this.computeWindows(startTimes);
 
+    // Assign stable colors by vessel_id so carry-over bars keep the same color
+    // across windows (otherwise a second-window bar would get a different hue).
+    const vesselColorMap = new Map<string, string>();
     let colorIdx = 0;
+    for (const a of visible) {
+      if (a.status === 'assigned' && !vesselColorMap.has(a.vessel_id)) {
+        vesselColorMap.set(a.vessel_id, VESSEL_COLORS[colorIdx++ % VESSEL_COLORS.length]);
+      }
+    }
+
     for (const win of windows) {
+      const nowMs = Date.now();
+
+      // Include vessels that OVERLAP with this window (not just those whose
+      // fondeo start falls inside it), so that long operations split across
+      // window boundaries appear in both the current and the next window.
       const winAssigns = visible.filter(a => {
-        const t = new Date(a.scheduled_start).getTime();
-        return t >= win.startMs && t < win.endMs;
+        const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
+        const s = this.fondeoStartMs(a) + delayMs;
+        const e = new Date(a.scheduled_end).getTime() + delayMs;
+        return s < win.endMs && e > win.startMs;
       });
       if (!winAssigns.length) continue;
 
@@ -431,47 +519,82 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       const berths: GanttBerth[] = [];
       for (const [berthId, bAssigns] of berthMap) {
         const sorted = [...bAssigns].sort((a, b) =>
-          new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime()
+          this.fondeoStartMs(a) - this.fondeoStartMs(b)
         );
-        const timings = sorted.map(a => ({
-          startMs: new Date(a.scheduled_start).getTime(),
-          endMs:   new Date(a.scheduled_end).getTime(),
-        }));
+        const timings = sorted.map(a => {
+          const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
+          return {
+            startMs: this.fondeoStartMs(a) + delayMs,
+            endMs:   new Date(a.scheduled_end).getTime() + delayMs,
+          };
+        });
         const lanes = assignLanes(timings);
 
         const vessels: GanttVessel[] = sorted.map((a, i) => {
+          const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
           const s = timings[i].startMs;
           const e = timings[i].endMs;
-          const clipped = e > win.endMs;
-          const left  = (s - win.startMs) / win.durationMs * 100;
-          const rawW  = (Math.min(e, win.endMs) - s) / win.durationMs * 100;
 
+          // Does the bar start before / end after this window?
+          const carryOver = s < win.startMs;
+          const clipped   = e > win.endMs;
+
+          // Visible portion of the bar within this window
+          const visStart    = Math.max(s, win.startMs);
+          const visEnd      = Math.min(e, win.endMs);
+          const barVisualMs = visEnd - visStart;
+
+          const left = (visStart - win.startMs) / win.durationMs * 100;
+          const rawW = barVisualMs / win.durationMs * 100;
+          // Warning fires when the operation has passed its scheduled end
+          // but is still within the 5 h grace window before "completed" status.
+          const showWarning = e <= nowMs && nowMs < e + 5 * 3_600_000;
+
+          // ── Phase segments: clip each phase to [visStart, visEnd] ──────────
           let phaseSegments: PhaseSegment[] | undefined;
-          if (a.status === 'assigned' && a.phases?.length >= 4) {
-            const berthPhases = a.phases.filter(p => p.name !== 'fondeo');
-            const total = berthPhases.reduce((acc, p) => acc + p.duration_h, 0);
-            if (total > 0) {
-              phaseSegments = berthPhases.map(p => ({
-                widthPct: `${(p.duration_h / total * 100).toFixed(2)}%`,
+          if (a.status === 'assigned' && a.phases?.length >= 4 && barVisualMs > 0) {
+            const segs: PhaseSegment[] = [];
+            for (const p of a.phases) {
+              if (p.duration_h <= 0) continue;
+              const phaseStartMs = new Date(p.start).getTime() + delayMs;
+              const phaseEndMs   = new Date(p.end).getTime()   + delayMs;
+              const pVisStart = Math.max(phaseStartMs, visStart);
+              const pVisEnd   = Math.min(phaseEndMs,   visEnd);
+              if (pVisEnd <= pVisStart) continue; // phase entirely outside this window
+              segs.push({
+                widthPct:   `${((pVisEnd - pVisStart) / barVisualMs * 100).toFixed(2)}%`,
                 colorClass: PHASE_COLORS[p.name] ?? 'bg-slate-400',
-                name: p.name,
-              }));
+                name:       p.name,
+              });
+            }
+            if (segs.length) phaseSegments = segs;
+          }
+
+          // ── Fondeo badge: only when the fondeo phase is visible here ────────
+          let fondeoH: number | undefined;
+          const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
+          if (fondeoPhase && fondeoPhase.duration_h > 0) {
+            const fStartMs = new Date(fondeoPhase.start).getTime() + delayMs;
+            const fEndMs   = new Date(fondeoPhase.end).getTime()   + delayMs;
+            if (fStartMs < win.endMs && fEndMs > win.startMs) {
+              fondeoH = fondeoPhase.duration_h;
             }
           }
 
-          const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
           return {
             name: a.vessel_id,
-            left: left.toFixed(2) + '%',
+            left:  left.toFixed(2) + '%',
             width: Math.max(rawW, 0.8).toFixed(2) + '%',
-            top: `${lanes[i] * LANE_PX}px`,
+            top:   `${lanes[i] * LANE_PX}px`,
             colorClass: a.status === 'assigned'
-              ? VESSEL_COLORS[colorIdx++ % VESSEL_COLORS.length]
+              ? (vesselColorMap.get(a.vessel_id) ?? 'bg-slate-500')
               : 'bg-red-400/70',
             clipped,
+            carryOver,
             assignment: a,
             phaseSegments,
-            fondeoH: fondeoPhase?.duration_h,
+            fondeoH,
+            showWarning,
           };
         });
 
@@ -563,14 +686,33 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   openOptimizerDetail(vessel: GanttVessel): void {
     const a = vessel.assignment!;
-    const override = this.vesselStatusOverrides.get(a.vessel_id);
-    const started   = new Date(a.scheduled_start) <= new Date();
+    const override    = this.vesselStatusOverrides.get(a.vessel_id);
+    const now         = Date.now();
+    const delayMs     = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
+    // fondeoMs = vessel arrival at port (start of anchorage waiting)
+    const fondeoMs    = this.fondeoStartMs(a) + delayMs;
+    const endMs       = new Date(a.scheduled_end).getTime() + delayMs;
+    const started     = fondeoMs <= now;          // vessel has arrived at port
+    const departed    = endMs + 5 * 3_600_000 <= now;
 
-    const status = override
-      ?? (started ? 'vessel.status.in_progress' : 'vessel.status.on_the_way');
+    const autoStatus = departed
+      ? 'vessel.status.completed'
+      : started
+        ? 'vessel.status.in_progress'
+        : 'vessel.status.on_the_way';
+
+    const status = override ?? autoStatus;
     const statusColor =
-      status === 'vessel.status.completed' ? 'bg-green-500' :
+      status === 'vessel.status.completed'   ? 'bg-green-500' :
       status === 'vessel.status.in_progress' ? 'bg-amber-500' : 'bg-blue-400';
+
+    // Look up original BerthCall for vessel properties not stored in the assignment
+    const call = this.transformResult?.data.find(c => c.call_id === a.vessel_id);
+
+    // canAddDelay: any vessel that hasn't been marked completed yet (on_the_way,
+    // in_progress, or inside the 5 h grace window after scheduled_end).
+    const canAddDelay = !departed;
+    const accumulatedDelay = this.vesselDelayHours.get(a.vessel_id);
 
     this.selectedVessel = {
       name: a.vessel_id,
@@ -579,21 +721,25 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       statusColor,
       priority: 'GT Priority',
       type: a.duration_source,
-      loa: a.noray_start != null ? `Norays ${a.noray_start}–${a.noray_end}` : '—',
-      gt: '—',
-      operation: a.duration_source,
+      loa:       call ? `${call.vessel_length} m` : '—',
+      gt:        call ? call.vessel_gt.toLocaleString() : '—',
+      operation: call ? call.operation_type : '—',
       berth: a.berth_id,
-      eta: new Date(a.scheduled_start).toLocaleString('es-ES'),
-      etd: new Date(a.scheduled_end).toLocaleString('es-ES'),
-      cargo: [],
-      waitingTime: `${a.waiting_time_h.toFixed(2)} h`,
+      eta: new Date(fondeoMs).toLocaleString('es-ES'),   // vessel arrival (fondeo start)
+      etd: new Date(endMs).toLocaleString('es-ES'),
+      cargo: call
+        ? [{ icon: 'inventory_2', type: call.cargo_group || 'N/A', quantity: call.quantity != null ? String(call.quantity) : 'N/A', unit: call.cargo_nature || '' }]
+        : [],
+      waitingTime:       `${a.waiting_time_h.toFixed(2)} h`,
       durationEstimated: `${a.duration_estimated_h.toFixed(1)} h`,
-      durationSource: SOURCE_LABELS[a.duration_source] ?? a.duration_source,
-      pilotAssigned: a.pilot_assigned,
-      tugsRequired: a.tugs_required,
-      tugsAssigned: a.tugs_assigned,
-      optimizerStatus: a.status,
-      phases: a.phases?.length ? a.phases : undefined,
+      durationSource:    SOURCE_LABELS[a.duration_source] ?? a.duration_source,
+      pilotAssigned:     a.pilot_assigned,
+      tugsRequired:      a.tugs_required,
+      tugsAssigned:      a.tugs_assigned,
+      optimizerStatus:   a.status,
+      phases:            a.phases?.length ? a.phases : undefined,
+      canAddDelay,
+      delayHours:        accumulatedDelay,
     };
     this.isPanelOpen = true;
   }

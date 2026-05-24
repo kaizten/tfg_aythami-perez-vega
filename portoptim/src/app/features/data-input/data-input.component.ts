@@ -55,6 +55,7 @@ export class DataInputComponent implements OnDestroy {
   private savedConfigForBerths: OptimizationParams | null = null;
   newBerthId = '';
   newBerthError = false;
+  berthSearchQuery = '';
   private csvBerthIds = new Set<string>();
 
   private sub?: Subscription;
@@ -67,8 +68,22 @@ export class DataInputComponent implements OnDestroy {
     readonly lang: LanguageService,
   ) {
     this.result = this.store.snapshot;
+    // Populate csvBerthIds from the store snapshot so berths already present in
+    // the CSV are protected from deletion even after a page reload.
+    if (this.result) {
+      this.csvBerthIds = new Set(uniqueOrdered(this.result.data));
+    }
     const saved = this.paramsStore.snapshot;
     if (saved) this.optimizationParams = { ...saved };
+
+    // When returning to this page (CSV already loaded, no new upload), check
+    // localStorage for a previously committed config and surface the banner —
+    // but only when the current params aren't already fully configured.
+    const alreadyConfigured = (this.optimizationParams.num_pilots ?? 0) > 0
+                           && (this.optimizationParams.num_tugs   ?? 0) > 0;
+    if (this.result && !alreadyConfigured) {
+      this._checkSavedConfig(uniqueOrdered(this.result.data));
+    }
   }
 
   // ── Getters ──────────────────────────────────────────────────────────────
@@ -80,6 +95,15 @@ export class DataInputComponent implements OnDestroy {
   get hasResult(): boolean { return this.result !== null; }
   get previewRows(): BerthCall[] { return this.result?.data.slice(0, 10) ?? []; }
   get uniqueBerths(): string[] { return this.result ? uniqueOrdered(this.result.data) : []; }
+
+  /** Zones filtered by the berth search query (display only — data is never removed). */
+  get filteredMooringZones() {
+    const q = this.berthSearchQuery.trim().toLowerCase();
+    if (!q) return this.optimizationParams.mooring_zones;
+    return this.optimizationParams.mooring_zones.filter(z =>
+      z.berth_id.toLowerCase().includes(q)
+    );
+  }
 
   /** Returns a list of human-readable validation errors for the params form. */
   get paramErrors(): string[] {
@@ -137,6 +161,7 @@ export class DataInputComponent implements OnDestroy {
     this.optimizationParams = { num_pilots: null, num_tugs: null, mooring_zones: [] };
     this.newBerthId = '';
     this.newBerthError = false;
+    this.berthSearchQuery = '';
     this.loading = true;
 
     this.sub = this.api.transformFile(file).subscribe({
@@ -157,14 +182,17 @@ export class DataInputComponent implements OnDestroy {
     if (!this.result) return;
     this.submitted = true;
     if (!this.paramsValid) return;
+    // Sync the in-memory store so the optimization page picks up the latest params.
+    // localStorage is written only after the optimizer actually runs successfully.
     this.paramsStore.set(this.optimizationParams);
-    this.saveToStorage();
     this.router.navigate(['/optimization']);
   }
 
   ngOnDestroy(): void {
+    // Keep in-memory store up to date for navigation (scratch-pad state).
+    // Do NOT write to localStorage here — that would overwrite the last valid
+    // committed config with a potentially incomplete or partial form state.
     this.paramsStore.set(this.optimizationParams);
-    this.saveToStorage();
     this.sub?.unsubscribe();
   }
 
@@ -177,15 +205,8 @@ export class DataInputComponent implements OnDestroy {
       prev.get(id) ?? { berth_id: id, bap_type: 'continuous', noray_max: null, capacity: null }
     );
     this.csvBerthIds = new Set(berths);
-    const raw = localStorage.getItem(this.localStorageKey(berths));
-    if (raw) {
-      try {
-        this.savedConfigForBerths = JSON.parse(raw) as OptimizationParams;
-        this.savedConfigBanner = true;
-      } catch {
-        this.savedConfigForBerths = null;
-      }
-    }
+    // Always offer to load a saved config when a new CSV is uploaded.
+    this._checkSavedConfig(berths);
   }
 
   // ── Config persistence ────────────────────────────────────────────────────
@@ -194,9 +215,19 @@ export class DataInputComponent implements OnDestroy {
     return 'portoptim_config_' + [...berths].sort().join('|');
   }
 
-  private saveToStorage(): void {
-    if (!this.hasResult) return;
-    localStorage.setItem(this.localStorageKey(this.uniqueBerths), JSON.stringify(this.optimizationParams));
+  /**
+   * Checks localStorage for a saved config that matches the given berth list.
+   * If found, stores it in {@link savedConfigForBerths} and raises the banner.
+   */
+  private _checkSavedConfig(berths: string[]): void {
+    const raw = localStorage.getItem(this.localStorageKey(berths));
+    if (!raw) return;
+    try {
+      this.savedConfigForBerths = JSON.parse(raw) as OptimizationParams;
+      this.savedConfigBanner = true;
+    } catch {
+      this.savedConfigForBerths = null;
+    }
   }
 
   applySavedConfig(): void {

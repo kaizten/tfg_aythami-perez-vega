@@ -1,5 +1,5 @@
-<!-- Backdrop -->
-<div *ngIf="isOpen" class="fixed inset-0 bg-primary/20 backdrop-blur-sm z-50 flex justify-end" (click)="close.emit()">
+<!-- Backdrop — z-[1300] ensures it covers the topbar (z-[1200]) -->
+<div *ngIf="isOpen" class="fixed inset-0 bg-primary/20 backdrop-blur-sm z-[1300] flex justify-end" (click)="close.emit()">
   <!-- Panel -->
   <div class="w-[500px] bg-white h-screen shadow-2xl flex flex-col border-l border-outline-variant" (click)="$event.stopPropagation()">
 
@@ -11,7 +11,7 @@
         </div>
         <div>
           <h2 class="text-h2 font-semibold text-on-surface">{{ vessel?.name }}</h2>
-          <p class="text-body-sm text-on-surface-variant">IMO: {{ vessel?.imo }}</p>
+          <p class="text-body-sm text-on-surface-variant">{{ vessel?.imo }}</p>
         </div>
       </div>
       <button type="button" (click)="close.emit()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface transition-colors">close</button>
@@ -35,6 +35,15 @@
         </div>
       </div>
 
+      <!-- Active delay badge -->
+      <div *ngIf="vessel?.delayHours"
+           class="flex items-center gap-sm px-md py-sm rounded-lg bg-amber-50 border border-amber-200">
+        <span class="material-symbols-outlined text-amber-500 text-base">schedule_send</span>
+        <p class="text-body-sm text-amber-800">
+          <strong>+{{ vessel?.delayHours }} h</strong> delay applied
+        </p>
+      </div>
+
       <!-- Vessel Info -->
       <section>
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
@@ -50,7 +59,7 @@
             <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'vessel.gt' | translate }}</p>
             <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.gt }}</p>
           </div>
-          <div>
+          <div class="col-span-2">
             <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'vessel.operation' | translate }}</p>
             <p class="text-body-sm font-semibold text-on-surface">{{ vessel?.operation }}</p>
           </div>
@@ -85,7 +94,7 @@
       </section>
 
       <!-- Cargo -->
-      <section>
+      <section *ngIf="vessel?.cargo?.length">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">inventory_2</span>
           {{ 'vessel.cargo.title' | translate }}
@@ -119,7 +128,7 @@
                  class="h-full"
                  [ngClass]="phaseColorClass(phase.name)"
                  [style.flex]="phase.duration_h.toString()"
-                 [title]="phase.name + ': ' + phase.duration_h.toFixed(2) + ' h'">
+                 [title]="phase.name + ': ' + hoursToHHMM(phase.duration_h)">
             </div>
           </ng-container>
         </div>
@@ -134,7 +143,7 @@
                 {{ ('opt.phase.' + phase.name) | translate }}
               </span>
             </div>
-            <p class="text-h3 font-bold text-on-surface">{{ phase.duration_h.toFixed(2) }} h</p>
+            <p class="text-h3 font-bold text-on-surface">{{ hoursToHHMM(phase.duration_h) }}</p>
             <p class="text-[10px] text-on-surface-variant mt-xs leading-tight">
               {{ formatPhaseTime(phase.start) }}<br>→ {{ formatPhaseTime(phase.end) }}
             </p>
@@ -142,7 +151,7 @@
         </div>
       </section>
 
-      <!-- Optimizer schedule section (only when opened from optimizer view) -->
+      <!-- Optimizer schedule section -->
       <section *ngIf="vessel?.optimizerStatus">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">schedule</span>
@@ -199,7 +208,43 @@
     </div>
 
     <!-- Footer actions — only visible in optimizer mode -->
-    <div *ngIf="isOptimizerMode" class="p-lg border-t border-outline-variant bg-surface-container-lowest">
+    <div *ngIf="isOptimizerMode" class="p-lg border-t border-outline-variant bg-surface-container-lowest space-y-sm">
+
+      <!-- Add Delay button / inline form (when not yet completed) -->
+      <ng-container *ngIf="vessel?.canAddDelay && !isCompleted">
+
+        <!-- Delay input form -->
+        <div *ngIf="showDelayInput"
+             class="p-md rounded-xl border border-amber-200 bg-amber-50 space-y-sm">
+          <p class="text-label-sm text-amber-800 font-semibold">{{ 'vessel.delay_hours' | translate }}</p>
+          <div class="flex items-center gap-sm">
+            <input type="number" min="0.5" step="0.5"
+                   [value]="pendingDelayH"
+                   (input)="pendingDelayH = +$any($event.target).value"
+                   [title]="'vessel.delay_hours' | translate"
+                   [placeholder]="'vessel.delay_hours' | translate"
+                   class="flex-1 rounded-lg border border-amber-300 bg-white px-sm py-xs text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            <button type="button" (click)="applyDelay()"
+                    class="px-md py-xs text-label-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+              {{ 'vessel.apply_delay' | translate }}
+            </button>
+            <button type="button" (click)="showDelayInput = false"
+                    class="material-symbols-outlined text-slate-400 hover:text-slate-600 transition-colors">
+              close
+            </button>
+          </div>
+        </div>
+
+        <!-- Add Delay trigger button -->
+        <button *ngIf="!showDelayInput"
+                type="button"
+                (click)="showDelayInput = true"
+                class="w-full py-md text-label-md border border-amber-300 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 transition-all flex items-center justify-center gap-sm">
+          <span class="material-symbols-outlined text-base">schedule_send</span>
+          {{ 'vessel.add_delay' | translate }}
+        </button>
+      </ng-container>
+
       <!-- Completed -->
       <div *ngIf="isCompleted"
            class="w-full py-md text-label-md bg-green-600 text-white rounded-lg flex items-center justify-center gap-sm shadow-md">

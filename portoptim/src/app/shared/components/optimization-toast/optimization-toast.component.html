@@ -1,0 +1,68 @@
+<!--
+  Optimization completion toast.
+
+  Positioning:  fixed, top-16 (just below the 64px topbar), right-8.
+  z-index:      1100 — intentionally BELOW the topbar (z-1200) so the toast
+                appears to slide out from UNDER the header as it animates in.
+  Animation:    translateY(-110%) → translateY(0) on slide-in,
+                reversed on slide-out. Driven by the [sliding] flag.
+-->
+<div
+  *ngIf="visible"
+  class="fixed top-16 right-8 z-[1100] w-[400px] pointer-events-none"
+  [ngClass]="sliding ? 'toast-slide-in' : 'toast-slide-out'"
+>
+  <div class="pointer-events-auto bg-white rounded-b-2xl shadow-xl
+              border border-slate-200 border-t-0 overflow-hidden">
+
+    <!-- ── Main row ──────────────────────────────────────────────────── -->
+    <div class="flex items-center gap-md px-lg py-md">
+
+      <!-- Check icon -->
+      <div class="w-9 h-9 rounded-full bg-emerald-50 flex items-center
+                  justify-center flex-shrink-0">
+        <span class="material-symbols-outlined text-emerald-500 text-xl icon-filled">
+          check_circle
+        </span>
+      </div>
+
+      <!-- Text -->
+      <div class="flex-1 min-w-0">
+        <p class="text-label-md font-semibold text-on-surface">
+          {{ 'opt.toast.title' | translate }}
+        </p>
+      </div>
+
+      <!-- CTA button -->
+      <button
+        type="button"
+        (click)="goToOptimization()"
+        class="flex items-center gap-xs px-md py-xs rounded-full flex-shrink-0
+               bg-teal-600 hover:bg-teal-700 active:bg-teal-800
+               text-label-sm font-semibold text-white transition-colors">
+        {{ 'opt.toast.cta' | translate }}
+        <span class="material-symbols-outlined text-sm leading-none">
+          arrow_forward
+        </span>
+      </button>
+
+      <!-- Dismiss button -->
+      <button
+        type="button"
+        (click)="dismiss()"
+        class="text-slate-400 hover:text-slate-600 transition-colors
+               flex-shrink-0 ml-xs -mr-xs">
+        <span class="material-symbols-outlined text-lg leading-none">close</span>
+      </button>
+    </div>
+
+    <!-- ── Progress bar (drains over TOAST_DURATION_MS via CSS transition) ── -->
+    <div class="h-[3px] w-full bg-slate-100">
+      <div *ngIf="progressing"
+           class="h-full bg-teal-500 toast-progress-bar"
+           [class.toast-progress-bar--drain]="draining">
+      </div>
+    </div>
+
+  </div>
+</div>

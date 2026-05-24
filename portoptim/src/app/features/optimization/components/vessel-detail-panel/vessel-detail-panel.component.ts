@@ -24,6 +24,10 @@ export interface VesselDetail {
   tugsAssigned?: boolean;
   optimizerStatus?: string;
   phases?: OperationPhase[];
+  /** True when a delay can still be reported (not yet arrived, or arrived < 3 h ago). */
+  canAddDelay?: boolean;
+  /** Total accumulated delay in hours (for display in the panel). */
+  delayHours?: number;
 }
 
 const PHASE_COLORS: Record<string, string> = {
@@ -42,13 +46,25 @@ const PHASE_COLORS: Record<string, string> = {
 export class VesselDetailPanelComponent {
   @Input() vessel: VesselDetail | null = null;
   @Input() isOpen = false;
-  @Output() close   = new EventEmitter<void>();
-  @Output() confirm = new EventEmitter<void>();
+  @Output() close    = new EventEmitter<void>();
+  @Output() confirm  = new EventEmitter<void>();
+  @Output() addDelay = new EventEmitter<number>();
 
-  get isOnTheWay(): boolean  { return this.vessel?.status === 'vessel.status.on_the_way'; }
-  get isInProgress(): boolean { return this.vessel?.status === 'vessel.status.in_progress'; }
-  get isCompleted(): boolean  { return this.vessel?.status === 'vessel.status.completed'; }
+  showDelayInput  = false;
+  pendingDelayH   = 1;
+
+  get isOnTheWay(): boolean   { return this.vessel?.status === 'vessel.status.on_the_way'; }
+  get isInProgress(): boolean  { return this.vessel?.status === 'vessel.status.in_progress'; }
+  get isCompleted(): boolean   { return this.vessel?.status === 'vessel.status.completed'; }
   get isOptimizerMode(): boolean { return !!this.vessel?.optimizerStatus; }
+
+  applyDelay(): void {
+    if (this.pendingDelayH > 0) {
+      this.addDelay.emit(this.pendingDelayH);
+      this.showDelayInput = false;
+      this.pendingDelayH  = 1;
+    }
+  }
 
   phaseColorClass(name: string): string {
     return PHASE_COLORS[name] ?? 'bg-slate-400';
@@ -62,5 +78,13 @@ export class VesselDetailPanelComponent {
 
   totalPhaseDuration(): number {
     return (this.vessel?.phases ?? []).reduce((s, p) => s + p.duration_h, 0);
+  }
+
+  /** Converts a decimal hour value to "HH:MM" string (e.g. 1.75 → "01:45"). */
+  hoursToHHMM(h: number): string {
+    const totalMin = Math.round(h * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 }

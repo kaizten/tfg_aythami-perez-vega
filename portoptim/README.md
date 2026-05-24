@@ -85,6 +85,9 @@ AppModule
    ├─ DataInputModule        → /data-input
    │   DataInputComponent
    │
+   ├─ StatisticsModule       → /statistics
+   │   StatisticsComponent
+   │
    └─ OptimizationModule     → /optimization
        OptimizationComponent
        VesselDetailPanelComponent
@@ -234,9 +237,77 @@ Each berth card has a **BAP type toggle** (`Continuous` / `Discrete`):
 
 A validation error banner lists all incomplete fields and prevents navigation until resolved.
 
+#### Berth search
+
+A live search field above the mooring-zone list filters berths by name. The underlying data is never removed — search only affects which cards are displayed. The field is reset automatically when a new CSV is uploaded.
+
+#### Config persistence
+
+Parameters are automatically saved to and restored from `localStorage` keyed by the sorted list of berth IDs. Behaviour:
+
+| Event | Action |
+|---|---|
+| New CSV with matching berths | Yellow "saved config" banner offers to restore the saved values |
+| "Apply" clicked on banner | Pilots, tugs, and matching zone configs are overwritten |
+| "Dismiss" clicked | Banner hidden; existing inputs unchanged |
+| CSV berths | Cannot be deleted from the list; only manually-added extra berths can be removed |
+| Export config | Downloads current params as a timestamped `.json` file |
+| Import config | Reads a previously exported `.json`; only fields present in the file are applied |
+
 ---
 
-### 3. Optimization (`/optimization`)
+### 3. Statistics (`/statistics`)
+
+In-depth statistical analysis of the loaded vessel data and — when an optimizer run has been completed — the proposed schedule.
+
+#### Data-source toggle
+
+A segmented control in the page header switches between two views (the toggle is only shown once an optimizer result is available):
+
+| Mode | Data source |
+|---|---|
+| **CSV** | `TransformationStoreService` — raw transformed records |
+| **Optimizer** | `OptimizationResultStoreService` — assignments from the last optimizer run |
+
+---
+
+#### CSV view
+
+| Chart | Description |
+|---|---|
+| **KPI cards** | Total vessels · Unique berths · Avg. stay duration (`hh:mm`) · Date range |
+| **Avg. Stay Duration + Cargo Volume by Month** | Dual horizontal-bar chart in a shared **6-month window** (prev/next navigation). Left: avg `duration_hours` per month. Right: total `quantity` per month. |
+| **Monthly detail panel** | Navigate month by month. Three columns: Berth Occupancy (% of available hours per berth), Operation Types (count per type), Cargo Groups (count per group). Scrollable when more than ~6 items. |
+| **Arrival Distribution** | 24-column vertical bar chart of vessel arrivals by hour of day. |
+
+---
+
+#### Optimizer view
+
+Mirrors the CSV view for the first three charts, then adds eight optimizer-specific panels.
+
+##### Shared charts (mirroring CSV)
+
+| Chart | Differences vs. CSV |
+|---|---|
+| **KPI cards** | Assigned/total vessels · Avg. total stay = sum of all phases (fondeo + atraque + ejecucion + desatraque) · Improvement vs. greedy % |
+| **Avg. Stay Duration + Cargo Volume by Month** | Month grouping uses `scheduled_start`; duration sums all phases; hours displayed as `hh:mm` |
+| **Monthly detail panel** | Same 3-column layout; berth occupancy uses `scheduled_start`/`scheduled_end` |
+
+##### Optimizer-specific charts
+
+| Chart | Description |
+|---|---|
+| **Docking & Undocking Distribution** | 24-column chart with two **overlapping** bars per hour slot — sky blue (atraque phase starts) and violet (desatraque phase starts, 80 % opacity). Desatraque start is computed as `scheduled_start + atraque_h + ejecucion_h`. Custom styled tooltip (appears on hover) shows the hour range and count per phase. Footer shows **peak hour** per phase. |
+| **Operation Phases** | Horizontal bars for each phase (fondeo / atraque / ejecucion / desatraque) showing total hours and average per vessel (`hh:mm`). |
+| **Anchorage by Berth** | Total and average fondeo hours aggregated per berth, sorted by total descending. Scrollable. |
+| **Waiting Time Distribution** | 5-bucket vertical bar chart: 0 h / 0–10 h / 10–20 h / 20–30 h / >30 h. Footer shows global avg waiting time in `hh:mm`. |
+| **Duration Sources** | Horizontal bars showing count + % per estimation method (`provided`, `rate_model`, `statistical_model`, `default`). |
+| **Resource Allocation by Month** | FTE-based staffing chart with its own **6-month window** navigation. Two parts: <br>① **Yearly peak summary** — one chip per year showing the maximum monthly FTE for pilots and tugs (= the headcount needed to cover the busiest month of each year). <br>② **Monthly horizontal bars** — per month: pilots FTE (teal) and tugs FTE (sky blue). <br>**FTE formula**: `ceil( Σ [ceil(atraque_h) + ceil(desatraque_h)] / available_h )` where `available_h = 48 × (days_in_month / 7)` (8 h/day, 48 h/week). Only the docking and undocking phases count; each phase duration is rounded up to the nearest full hour before summing. |
+
+---
+
+### 4. Optimization (`/optimization`)
 
 Dual-mode page: **Historical view** (raw transform data) and **Optimizer view** (proposed schedule).
 

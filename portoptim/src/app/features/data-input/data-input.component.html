@@ -245,15 +245,40 @@
             {{ 'di.params.zones_title' | translate }}
           </p>
 
+          <!-- Search field -->
+          <div *ngIf="hasResult" class="relative mb-sm">
+            <span class="material-symbols-outlined text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none select-none">
+              search
+            </span>
+            <input type="text"
+                   [(ngModel)]="berthSearchQuery"
+                   [placeholder]="'di.params.berth_search' | translate"
+                   [attr.aria-label]="'di.params.berth_search' | translate"
+                   class="w-full rounded-lg pl-7 pr-sm py-xs text-body-sm border border-slate-200 bg-slate-50 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition">
+            <button *ngIf="berthSearchQuery"
+                    type="button"
+                    (click)="berthSearchQuery = ''"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-on-surface transition-colors">
+              <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+
           <!-- No data yet -->
           <div *ngIf="!hasResult" class="flex flex-col items-center justify-center py-md text-slate-400">
             <span class="material-symbols-outlined text-3xl mb-xs">anchor</span>
             <p class="text-body-sm text-center">{{ 'di.params.zones_empty' | translate }}</p>
           </div>
 
+          <!-- No search results -->
+          <div *ngIf="hasResult && !filteredMooringZones.length && berthSearchQuery.trim()"
+               class="flex flex-col items-center justify-center py-md text-slate-400">
+            <span class="material-symbols-outlined text-2xl mb-xs">search_off</span>
+            <p class="text-body-sm text-center">{{ 'di.params.berth_search_empty' | translate }}</p>
+          </div>
+
           <!-- Zone config cards -->
           <div *ngIf="hasResult" class="space-y-sm max-h-[420px] overflow-y-auto pr-xs">
-            <div *ngFor="let zone of optimizationParams.mooring_zones"
+            <div *ngFor="let zone of filteredMooringZones"
                  class="rounded-lg border border-slate-200 bg-slate-50 p-sm">
 
               <!-- Zone name -->
