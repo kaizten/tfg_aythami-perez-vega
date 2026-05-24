@@ -27,6 +27,10 @@ interface GanttVessel {
   clippedLeft: boolean;
   clippedRight: boolean;
   phaseSegments?: PhaseSegment[];
+  /** Fondeo (anchorage) duration in hours — shown as anchor badge when visible. */
+  fondeoH?: number;
+  /** True when the operation is past its scheduled end but within the 5 h grace window. */
+  showWarning?: boolean;
 }
 
 interface GanttBerth {
@@ -84,6 +88,13 @@ function vesselColor(callId: string): string {
   return VESSEL_COLORS[Math.abs(hash) % VESSEL_COLORS.length];
 }
 
+function hoursToHHMM(h: number): string {
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
 // ── Component ───────────────────────────────────────────────────────────────────
 
 @Component({
@@ -94,6 +105,7 @@ function vesselColor(callId: string): string {
 })
 export class BerthTimelineComponent implements OnInit, OnDestroy {
   readonly hourLabels = HOUR_LABELS;
+  readonly hoursToHHMM = hoursToHHMM;
   ganttBerths: GanttBerth[] = [];
 
   availableDays: string[] = [];
@@ -271,12 +283,20 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Returns the vessel arrival timestamp (start of fondeo phase). */
+  private fondeoStartMs(a: OptimizationAssignment): number {
+    const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
+    if (fondeoPhase) return new Date(fondeoPhase.start).getTime();
+    return new Date(a.scheduled_start).getTime() - a.waiting_time_h * 3_600_000;
+  }
+
   private buildViewFromAssignments(): void {
     if (!this.allAssignments.length) { this.clearView(); return; }
 
     const daySet = new Set<number>();
     for (const a of this.allAssignments) {
-      const s = floorToDay(new Date(a.scheduled_start).getTime());
+      // Use fondeo start so days that only contain anchorage activity are included.
+      const s = floorToDay(this.fondeoStartMs(a));
       const e = floorToDay(new Date(a.scheduled_end).getTime());
       for (let d = s; d <= e; d += DAY_MS) daySet.add(d);
     }
@@ -300,10 +320,13 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     if (!this.allAssignments.length || !this.dayStartsMs.length) return;
 
     const dayStart = this.dayStartsMs[this.selectedDayIndex];
-    const dayEnd = dayStart + DAY_MS;
+    const dayEnd   = dayStart + DAY_MS;
+    const nowMs    = Date.now();
 
+    // Include any assignment whose full range (fondeo → scheduled_end) overlaps
+    // this 24h window.
     const dayAssignments = this.allAssignments.filter(a => {
-      const s = new Date(a.scheduled_start).getTime();
+      const s = this.fondeoStartMs(a);
       const e = new Date(a.scheduled_end).getTime();
       return s < dayEnd && e > dayStart;
     });
@@ -316,18 +339,19 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
 
     const berths: GanttBerth[] = [];
     for (const [berthId, assigns] of berthMap) {
+      // Sort by fondeo start so swim-lane assignment is consistent
       const sorted = [...assigns].sort((x, y) =>
-        new Date(x.scheduled_start).getTime() - new Date(y.scheduled_start).getTime(),
+        this.fondeoStartMs(x) - this.fondeoStartMs(y),
       );
 
       const clampedTimings = sorted.map(a => ({
-        startMs: Math.max(new Date(a.scheduled_start).getTime(), dayStart),
+        startMs: Math.max(this.fondeoStartMs(a), dayStart),
         endMs:   Math.min(new Date(a.scheduled_end).getTime(), dayEnd),
       }));
       const lanes = assignLanes(clampedTimings);
 
       const vessels: GanttVessel[] = sorted.map((a, i) => {
-        const rawS = new Date(a.scheduled_start).getTime();
+        const rawS = this.fondeoStartMs(a);
         const rawE = new Date(a.scheduled_end).getTime();
         const clippedLeft  = rawS < dayStart;
         const clippedRight = rawE > dayEnd;
@@ -335,18 +359,22 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
         const visEnd   = clampedTimings[i].endMs;
         const visDur   = visEnd - visStart;
 
+        // ⚠ Warning: operation has passed its end but is within the 5 h grace window
+        const showWarning = rawE <= nowMs && nowMs < rawE + 5 * 3_600_000;
+
+        // Phase segments — all 4 phases (including fondeo), each clipped to [visStart, visEnd]
         let phaseSegments: PhaseSegment[] | undefined;
         if (a.phases?.length >= 4 && visDur > 0) {
-          const berthPhases = a.phases.filter(p => p.name !== 'fondeo');
           const segments: PhaseSegment[] = [];
-          for (const phase of berthPhases) {
+          for (const phase of a.phases) {
+            if (phase.duration_h <= 0) continue;
             const ps = new Date(phase.start).getTime();
             const pe = new Date(phase.end).getTime();
             const visPhaseStart = Math.max(ps, visStart);
             const visPhaseEnd   = Math.min(pe, visEnd);
             if (visPhaseEnd > visPhaseStart) {
               segments.push({
-                widthPct: `${((visPhaseEnd - visPhaseStart) / visDur * 100).toFixed(2)}%`,
+                widthPct:   `${((visPhaseEnd - visPhaseStart) / visDur * 100).toFixed(2)}%`,
                 colorClass: PHASE_COLORS[phase.name] ?? 'bg-slate-400',
                 name: phase.name,
               });
@@ -355,15 +383,28 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
           if (segments.length) phaseSegments = segments;
         }
 
+        // Fondeo badge: only when the fondeo phase is visible in this window
+        let fondeoH: number | undefined;
+        const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
+        if (fondeoPhase && fondeoPhase.duration_h > 0) {
+          const fStart = new Date(fondeoPhase.start).getTime();
+          const fEnd   = new Date(fondeoPhase.end).getTime();
+          if (fStart < dayEnd && fEnd > dayStart) {
+            fondeoH = fondeoPhase.duration_h;
+          }
+        }
+
         return {
-          name:       a.vessel_id,
-          left:       ((visStart - dayStart) / DAY_MS * 100).toFixed(2) + '%',
-          width:      Math.max((visEnd - visStart) / DAY_MS * 100, 0.5).toFixed(2) + '%',
-          top:        `${lanes[i] * LANE_PX}px`,
-          colorClass: 'bg-teal-500/90',
+          name:         a.vessel_id,
+          left:         ((visStart - dayStart) / DAY_MS * 100).toFixed(2) + '%',
+          width:        Math.max((visEnd - visStart) / DAY_MS * 100, 0.5).toFixed(2) + '%',
+          top:          `${lanes[i] * LANE_PX}px`,
+          colorClass:   'bg-teal-500/90',
           clippedLeft,
           clippedRight,
           phaseSegments,
+          fondeoH,
+          showWarning,
         };
       });
 
