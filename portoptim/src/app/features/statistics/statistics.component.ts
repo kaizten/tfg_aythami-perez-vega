@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
-import { BerthCall, OptimizationApiResult, TransformApiResponse } from '../../core/models/api.models';
+import { BerthCall, OptimizationApiResult, OptimizationAssignment, TransformApiResponse } from '../../core/models/api.models';
 import { LanguageService } from '../../core/services/language.service';
 import { OptimizationResultStoreService } from '../../core/services/optimization-result-store.service';
 import { TransformationStoreService } from '../../core/services/transformation-store.service';
@@ -29,8 +29,10 @@ interface CargoBreakdown {
 
 interface ArrivalHour {
   hour: number;
-  count: number;
-  barPct: number;
+  arrivalCount:   number;
+  departureCount: number;
+  arrivalPct:     number;
+  departurePct:   number;
 }
 
 interface MonthStat {
@@ -61,17 +63,28 @@ interface OptiMonthStat {
   year: number;
   month: number;
   vesselCount: number;
-  avgDuration: number;      // avg (scheduled_end − scheduled_start) in hours
+  avgDuration: number;
   totalQuantity: number;
   quantityRecords: number;
   berthOccupancy: BerthOccupancy[];
   opBreakdown: OpBreakdown[];
   cargoBreakdown: CargoBreakdown[];
-  // Minimum FTE resources needed this month
-  // Pilots: work only during atraque+desatraque phases, 8 h/day · 48 h/week max
-  // Phase durations are rounded up to the nearest full hour.
-  pilotsNeededFte: number;  // ceil( Σceil(atraque+desatraque per vessel) / availH )
-  tugsNeededFte: number;    // same but weighted by tugs_required per vessel
+  // FTE estimate: total work-hours / available hours per pilot (8 h/day, 40 h/week, ceil per manoeuvre)
+  pilotsNeededFte: number;
+  tugsNeededFte: number;
+  // Resource wait totals
+  pilotWaitH: number;
+  tugWaitH: number;
+  waitUndockH: number;
+  // Constrained peak (≤ configured fleet)
+  peakPilots: number;
+  peakTugs: number;
+  // Peak + simultaneous waiters (minimum for coverage)
+  trueMinPilots: number;
+  trueMinTugs: number;
+  // Final minimum = max(trueMin, FTE) — shown in the bars
+  finalMinPilots: number;
+  finalMinTugs: number;
 }
 
 interface PhaseStat {
@@ -105,6 +118,25 @@ interface DurSourceStat {
   pct: number;
 }
 
+/**
+ * Counts of vessels affected by each kind of schedule-change event.
+ * A single vessel can appear in more than one category.
+ */
+interface ReplanChangeStat {
+  /** Vessels with a berth-operation delay (delay phase inserted after ejecucion). */
+  operationDelay: number;
+  /** Vessels where the user confirmed early cargo completion (early_complete === true). */
+  earlyComplete: number;
+  /** Vessels with a scheduling-induced undock resource wait (waiting_undock, NOT user early-complete). */
+  undockWait: number;
+  /** Vessels with an arrival delay (delay phase prepended before fondeo). */
+  arrivalDelay: number;
+  /** Vessels that arrived earlier than their scheduled ETA (early_arrival_h set). */
+  earlyArrival: number;
+  /** Total assigned vessels — used as denominator for percentages. */
+  totalAssigned: number;
+}
+
 /** Per-hour counts for the docking/undocking phase-start distribution chart. */
 interface PhaseHourStat {
   hour: number;
@@ -114,12 +146,16 @@ interface PhaseHourStat {
   desatraquePct: number;
 }
 
-/** Yearly peak FTE requirement — max of monthly FTE values for a given year. */
+/** Yearly peak resource requirement — aggregated from monthly stats. */
 interface OptiYearResource {
   year: number;
-  pilotsNeededFte: number;
-  tugsNeededFte: number;
+  totalWaitUndockH: number;
+  finalMinPilots: number;    // max over months of max(trueMinPilots, pilotsNeededFte)
+  finalMinTugs: number;
+  totalPilotWaitH: number;
+  totalTugWaitH: number;
 }
+
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -188,6 +224,7 @@ export class StatisticsComponent implements OnInit, OnDestroy {
   optiWaitBuckets: WaitBucket[]    = [];
   optiBerthAnchorage: BerthAnchorageStat[] = [];
   optiDurSources: DurSourceStat[]  = [];
+  optiReplanChanges: ReplanChangeStat | null = null;
   optiAvgWaitH = 0;
   // Resource allocation 6-month window (independent from dur+cargo window)
   optiResourceWindowStart = 0;
@@ -225,6 +262,7 @@ export class StatisticsComponent implements OnInit, OnDestroy {
           this.optiScheduledHours = [];
           this.optiPhases = []; this.optiWaitBuckets = []; this.optiBerthAnchorage = [];
           this.optiDurSources = [];
+          this.optiReplanChanges = null;
           this.optiAvgWaitH = 0;
         }
       }),
@@ -304,11 +342,24 @@ export class StatisticsComponent implements OnInit, OnDestroy {
   }
 
   get maxOptiResourcePilots(): number {
-    return Math.max(...this.optiResourceWindow.map(m => m.pilotsNeededFte), 1);
+    return Math.max(...this.optiResourceWindow.map(m => m.finalMinPilots), 1);
   }
 
   get maxOptiResourceTugs(): number {
-    return Math.max(...this.optiResourceWindow.map(m => m.tugsNeededFte), 1);
+    return Math.max(...this.optiResourceWindow.map(m => m.finalMinTugs), 1);
+  }
+
+  /** Max count across all replan-change categories — used to scale bar widths. */
+  get optiReplanMaxCount(): number {
+    if (!this.optiReplanChanges) return 1;
+    const { operationDelay, earlyComplete, undockWait, arrivalDelay, earlyArrival } = this.optiReplanChanges;
+    return Math.max(operationDelay, earlyComplete, undockWait, arrivalDelay, earlyArrival, 1);
+  }
+
+  /** Percentage of assigned vessels for a given replan-change count. */
+  replanPct(count: number): number {
+    if (!this.optiReplanChanges || this.optiReplanChanges.totalAssigned === 0) return 0;
+    return count / this.optiReplanChanges.totalAssigned * 100;
   }
 
   get optiTotalAtraque(): number {
@@ -414,9 +465,16 @@ export class StatisticsComponent implements OnInit, OnDestroy {
   /** Convert decimal hours to "hh:mm" string, e.g. 24.5 → "24:30". */
   formatHours(h: number): string {
     const totalMinutes = Math.round(h * 60);
-    const hours   = Math.floor(totalMinutes / 60);
+    const years   = Math.floor(totalMinutes / 525_600);
+    const days    = Math.floor((totalMinutes % 525_600) / 1440);
+    const hours   = Math.floor((totalMinutes % 1440) / 60);
     const minutes = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    const parts: string[] = [];
+    if (years > 0)   parts.push(`${years}y`);
+    if (days > 0)    parts.push(`${days}d`);
+    if (hours > 0)   parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    return parts.length ? parts.join(' ') : '0m';
   }
 
   padHour(h: number): string {
@@ -548,12 +606,34 @@ export class StatisticsComponent implements OnInit, OnDestroy {
   }
 
   private computeArrivalHours(calls: BerthCall[]): ArrivalHour[] {
-    const counts = new Array(24).fill(0);
+    const arrivals   = new Array(24).fill(0);
+    const departures = new Array(24).fill(0);
     for (const call of calls) {
-      counts[new Date(call.arrival_time).getHours()]++;
+      arrivals[new Date(call.arrival_time).getHours()]++;
+      departures[new Date(call.departure_time).getHours()]++;
     }
-    const max = Math.max(...counts, 1);
-    return counts.map((count, hour) => ({ hour, count, barPct: count / max * 100 }));
+    const maxVal = Math.max(...arrivals, ...departures, 1);
+    return arrivals.map((arrivalCount, hour) => ({
+      hour,
+      arrivalCount,
+      departureCount: departures[hour],
+      arrivalPct:     arrivalCount   / maxVal * 100,
+      departurePct:   departures[hour] / maxVal * 100,
+    }));
+  }
+
+  get peakArrivalHour(): number {
+    if (!this.arrivalHours.length) return 0;
+    return this.arrivalHours.reduce((best, h) =>
+      h.arrivalCount > best.arrivalCount ? h : best
+    ).hour;
+  }
+
+  get peakDepartureHour(): number {
+    if (!this.arrivalHours.length) return 0;
+    return this.arrivalHours.reduce((best, h) =>
+      h.departureCount > best.departureCount ? h : best
+    ).hour;
   }
 
   // ── Optimizer stats builder ───────────────────────────────────────────────
@@ -612,6 +692,8 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         : 0;
       const totalQuantity   = mCalls.reduce((s, c) => s + (c.quantity ?? 0), 0);
       const quantityRecords = mCalls.filter(c => c.quantity !== null).length;
+      const fteRes  = this._computeMonthFteResources(mAssigns, year, month);
+      const waitRes = this._computeMonthResourceWaits(mAssigns);
       return {
         key, year, month,
         vesselCount: mAssigns.length,
@@ -621,25 +703,30 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         berthOccupancy: this.computeOptiMonthBerthOcc(mAssigns, year, month),
         opBreakdown:    this.computeOpBreakdown(mCalls),
         cargoBreakdown: this.computeCargoBreakdown(mCalls),
-        ...this._computeMonthFteResources(mAssigns, year, month),
+        ...fteRes,
+        ...waitRes,
+        // Combined minimum: coverage (peak + waiters) vs capacity (work-hours / FTE)
+        finalMinPilots: Math.max(waitRes.trueMinPilots, fteRes.pilotsNeededFte),
+        finalMinTugs:   Math.max(waitRes.trueMinTugs,   fteRes.tugsNeededFte),
       };
     });
     this.optiSelectedMonthIndex  = 0;
     this.optiMonthWindowStart    = 0;
     this.optiResourceWindowStart = 0;
 
-    // ── Yearly peak FTE (max monthly FTE per year) ────────────────────────
-    const yearMap = new Map<number, { pilots: number[]; tugs: number[] }>();
-    for (const m of this.optiMonths) {
-      if (!yearMap.has(m.year)) yearMap.set(m.year, { pilots: [], tugs: [] });
-      yearMap.get(m.year)!.pilots.push(m.pilotsNeededFte);
-      yearMap.get(m.year)!.tugs.push(m.tugsNeededFte);
-    }
-    this.optiYearResources = Array.from(yearMap.keys()).sort().map(year => ({
-      year,
-      pilotsNeededFte: Math.max(...yearMap.get(year)!.pilots),
-      tugsNeededFte:   Math.max(...yearMap.get(year)!.tugs),
-    }));
+    // ── Yearly minimum staffing (max of monthly finalMin values) ─────────
+    const yearSet = new Set(this.optiMonths.map(m => m.year));
+    this.optiYearResources = Array.from(yearSet).sort().map(year => {
+      const yearMonths = this.optiMonths.filter(m => m.year === year);
+      return {
+        year,
+        totalWaitUndockH: yearMonths.reduce((s, m) => s + m.waitUndockH,      0),
+        finalMinPilots:   Math.max(...yearMonths.map(m => m.finalMinPilots), 0),
+        finalMinTugs:     Math.max(...yearMonths.map(m => m.finalMinTugs),   0),
+        totalPilotWaitH:  yearMonths.reduce((s, m) => s + m.pilotWaitH,       0),
+        totalTugWaitH:    yearMonths.reduce((s, m) => s + m.tugWaitH,         0),
+      };
+    });
 
     // ── Docking / undocking phase-start distribution ─────────────────────
     // atraque starts at scheduled_start (fondeo is before it).
@@ -740,20 +827,58 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       .map(([source, count]) => ({ labelKey: `stats.opt.dur_source.${source}`, count, pct: count / dsTotal * 100 }))
       .sort((a, b) => b.count - a.count);
 
+    // ── [EXTRA] Schedule-change breakdown ────────────────────────────────
+    // Detect change types:
+    //   Arrival delay      → 'delay' phase is FIRST (prepended before fondeo)
+    //   Operation delay    → 'delay' phase present but NOT first (inserted after ejecucion)
+    //   Early completion   → a.early_complete === true (user called early_complete endpoint)
+    //   Undock wait        → 'waiting_undock' phase present AND a.early_complete !== true
+    //                        (scheduler inserted a resource-wait phase at berth)
+    let _opDelay     = 0;
+    let _earlyC      = 0;
+    let _undockWait  = 0;
+    let _arrDelay    = 0;
+    let _earlyArriv  = 0;
+    for (const a of assigned) {
+      const phases = a.phases ?? [];
+      const hasDelay      = phases.some(p => p.name === 'delay');
+      const hasWaitUndock = phases.some(p => p.name === 'waiting_undock');
+      if (hasDelay) {
+        if (phases[0]?.name === 'delay') _arrDelay++;
+        else                              _opDelay++;
+      }
+      if (hasWaitUndock) {
+        if (a.early_complete) _earlyC++;   // user-triggered early completion
+        else                  _undockWait++; // scheduling resource contention at undock
+      }
+      if ((a.early_arrival_h ?? 0) > 0) _earlyArriv++;
+    }
+    this.optiReplanChanges = {
+      operationDelay: _opDelay,
+      earlyComplete:  _earlyC,
+      undockWait:     _undockWait,
+      arrivalDelay:   _arrDelay,
+      earlyArrival:   _earlyArriv,
+      totalAssigned:  assigned.length,
+    };
+
   }
 
   /**
    * Minimum FTE resources required for a calendar month.
-   * Pilots/tugs work only during the `atraque` and `desatraque` phases.
-   * Each phase duration is rounded **up** to the nearest full hour (e.g. 0.5 h → 1 h).
-   * Available capacity per FTE: 8 h/day · 48 h/week (= 48 × days_in_month / 7 hours).
+   * Pilots/tugs work only during `atraque` and `desatraque` phases.
+   * Each individual phase duration is rounded UP to the nearest full hour
+   * (e.g. 30 min → 1 h of charged work time).
+   * Available hours per FTE: max 8 h/day AND max 40 h/week (Mon–Sun).
    */
   private _computeMonthFteResources(
     mAssigns: { phases?: { name: string; duration_h: number }[]; tugs_required: number }[],
     year: number, month: number,
   ): { pilotsNeededFte: number; tugsNeededFte: number } {
-    const daysInMonth  = new Date(year, month, 0).getDate();          // new Date(y, m, 0) = last day of month
-    const availHPerFte = 48 * (daysInMonth / 7);                      // hours a single FTE can work this month
+    const daysInMonth  = new Date(year, month, 0).getDate();
+    const weeksInMonth = Math.ceil(daysInMonth / 7);
+    // Binding constraint: 8 h/day daily cap AND 40 h/week weekly cap
+    const availHPerFte = Math.min(8 * daysInMonth, 40 * weeksInMonth);
 
     let pilotHours = 0;
     let tugHours   = 0;
@@ -768,6 +893,115 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return {
       pilotsNeededFte: availHPerFte > 0 ? Math.ceil(pilotHours / availHPerFte) : 0,
       tugsNeededFte:   availHPerFte > 0 ? Math.ceil(tugHours   / availHPerFte) : 0,
+    };
+  }
+
+  /**
+   * Aggregate resource-wait hours and demand peaks for a month.
+   *
+   * peakPilots / peakTugs — constrained peak (max simultaneous atraque + desatraque
+   *   in the final schedule).  Always ≤ configured fleet size.
+   *
+   * trueMinPilots / trueMinTugs — minimum fleet required so that NO vessel waits.
+   *
+   *   Formula:  trueMin = constrainedPeak + maxSimultaneousWaiters
+   *
+   *   When pilot_wait_h > 0 the fleet was fully occupied at the berth-available
+   *   time — every waiting vessel represents demand ABOVE the fleet size.
+   *   The maximum number of vessels simultaneously in their wait window tells us
+   *   exactly how many extra resources are needed.
+   *
+   *   Wait windows considered:
+   *     • Fondeo (docking)  pilots: [atraque.start − pilot_wait_h, atraque.start]  (+1 pilot)
+   *     • Fondeo (docking)  tugs:   [atraque.start − tug_wait_h,   atraque.start]  (+nt tugs)
+   *     • waiting_undock            [wu.start, wu.end]                              (+1 pilot, +nt tugs)
+   *
+   *   This avoids the cascading-shift problem: we don't move other vessels' windows,
+   *   we just count how many are queued simultaneously at the time they wanted to dock.
+   */
+  private _computeMonthResourceWaits(
+    mAssigns: OptimizationAssignment[],
+  ): { pilotWaitH: number; tugWaitH: number; waitUndockH: number;
+       peakPilots: number; peakTugs: number;
+       trueMinPilots: number; trueMinTugs: number } {
+    let pilotWaitH  = 0;
+    let tugWaitH    = 0;
+    let waitUndockH = 0;
+
+    // Constrained sweep: actual atraque + desatraque windows (max = fleet size)
+    const constrained: { t: number; dp: number; dt: number }[] = [];
+    // Wait-window sweep: vessels simultaneously queued for resources
+    const waiters:     { t: number; dp: number; dt: number }[] = [];
+
+    const push = (arr: typeof constrained, t: number, dp: number, dt: number) =>
+      arr.push({ t, dp, dt });
+
+    for (const a of mAssigns) {
+      pilotWaitH += a.pilot_wait_h ?? 0;
+      tugWaitH   += a.tug_wait_h   ?? 0;
+      const nt       = a.tugs_required;
+      const pilotWh  = a.pilot_wait_h ?? 0;
+      const tugWh    = a.tug_wait_h   ?? 0;
+
+      let atraqueStartMs: number | null = null;
+
+      for (const p of a.phases ?? []) {
+        const s = new Date(p.start).getTime();
+        const e = new Date(p.end).getTime();
+
+        if (p.name === 'atraque') {
+          atraqueStartMs = s;
+          push(constrained, s, +1, +nt);
+          push(constrained, e, -1, -nt);
+        } else if (p.name === 'desatraque') {
+          push(constrained, s, +1, +nt);
+          push(constrained, e, -1, -nt);
+        } else if (p.name === 'waiting_undock') {
+          waitUndockH += p.duration_h;
+          // Vessel queued at berth for 1 pilot + nt tugs
+          push(waiters, s, +1, +nt);
+          push(waiters, e, -1, -nt);
+        }
+      }
+
+      // Fondeo resource-wait windows for docking
+      if (atraqueStartMs !== null) {
+        if (pilotWh > 0.01) {
+          push(waiters, atraqueStartMs - pilotWh * 3_600_000, +1, 0);
+          push(waiters, atraqueStartMs,                        -1, 0);
+        }
+        if (tugWh > 0.01) {
+          push(waiters, atraqueStartMs - tugWh * 3_600_000, 0, +nt);
+          push(waiters, atraqueStartMs,                      0, -nt);
+        }
+      }
+    }
+
+    const sortFn = (a: { t: number; dp: number }, b: { t: number; dp: number }) =>
+      a.t !== b.t ? a.t - b.t : a.dp - b.dp;
+
+    constrained.sort(sortFn);
+    waiters.sort(sortFn);
+
+    let pilots = 0, tugs = 0, peakPilots = 0, peakTugs = 0;
+    for (const e of constrained) {
+      pilots += e.dp; tugs += e.dt;
+      if (pilots > peakPilots) peakPilots = pilots;
+      if (tugs   > peakTugs)   peakTugs   = tugs;
+    }
+
+    let wp = 0, wt = 0, maxWaitPilots = 0, maxWaitTugs = 0;
+    for (const e of waiters) {
+      wp += e.dp; wt += e.dt;
+      if (wp > maxWaitPilots) maxWaitPilots = wp;
+      if (wt > maxWaitTugs)   maxWaitTugs   = wt;
+    }
+
+    return {
+      pilotWaitH, tugWaitH, waitUndockH,
+      peakPilots, peakTugs,
+      trueMinPilots: peakPilots + maxWaitPilots,
+      trueMinTugs:   peakTugs   + maxWaitTugs,
     };
   }
 

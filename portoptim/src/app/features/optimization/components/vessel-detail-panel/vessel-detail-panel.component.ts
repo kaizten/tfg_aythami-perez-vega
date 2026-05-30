@@ -22,19 +22,37 @@ export interface VesselDetail {
   pilotAssigned?: boolean;
   tugsRequired?: number;
   tugsAssigned?: boolean;
+  /** Fondeo hours attributable specifically to pilot unavailability. */
+  pilotWaitH?: number;
+  /** Fondeo hours attributable specifically to tug unavailability. */
+  tugWaitH?: number;
   optimizerStatus?: string;
   phases?: OperationPhase[];
   /** True when a delay can still be reported (not yet arrived, or arrived < 3 h ago). */
   canAddDelay?: boolean;
   /** Total accumulated delay in hours (for display in the panel). */
   delayHours?: number;
+  /**
+   * Scheduled berth start in milliseconds (Date.now()-comparable).
+   * Used to distinguish arrival delay (now < scheduledStartMs + 3 h) from
+   * operation delay (now >= scheduledStartMs + 3 h).
+   */
+  scheduledStartMs?: number;
+  /**
+   * Planned fondeo (ETA) start in milliseconds.
+   * Used in confirmOperation() to detect if the vessel arrived before its scheduled ETA.
+   */
+  etaMs?: number;
 }
 
 const PHASE_COLORS: Record<string, string> = {
-  fondeo:    'bg-amber-400',
-  atraque:   'bg-sky-500',
-  ejecucion: 'bg-emerald-500',
-  desatraque:'bg-violet-500',
+  delay:                'bg-red-500',
+  fondeo:               'bg-amber-400',
+  fondeo_resource_wait: 'bg-orange-400',
+  atraque:              'bg-sky-500',
+  ejecucion:            'bg-emerald-500',
+  desatraque:           'bg-violet-500',
+  waiting_undock:       'bg-violet-300',
 };
 
 @Component({
@@ -50,12 +68,12 @@ export class VesselDetailPanelComponent {
   @Output() confirm  = new EventEmitter<void>();
   @Output() addDelay = new EventEmitter<number>();
 
-  showDelayInput  = false;
-  pendingDelayH   = 1;
+  showDelayInput = false;
+  pendingDelayH  = 1;
 
-  get isOnTheWay(): boolean   { return this.vessel?.status === 'vessel.status.on_the_way'; }
-  get isInProgress(): boolean  { return this.vessel?.status === 'vessel.status.in_progress'; }
-  get isCompleted(): boolean   { return this.vessel?.status === 'vessel.status.completed'; }
+  get isOnTheWay(): boolean      { return this.vessel?.status === 'vessel.status.on_the_way'; }
+  get isInProgress(): boolean    { return this.vessel?.status === 'vessel.status.in_progress'; }
+  get isCompleted(): boolean     { return this.vessel?.status === 'vessel.status.completed'; }
   get isOptimizerMode(): boolean { return !!this.vessel?.optimizerStatus; }
 
   applyDelay(): void {

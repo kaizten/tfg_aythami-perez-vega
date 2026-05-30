@@ -7,6 +7,109 @@
   <div class="flex items-center gap-lg">
     <div class="flex items-center gap-sm">
 
+      <!-- ── Notification bell ──────────────────────────────────── -->
+      <div class="relative">
+        <button type="button"
+                (click)="toggleNotif()"
+                class="relative material-symbols-outlined p-xs rounded-full transition-colors"
+                [ngClass]="notifOpen
+                  ? 'text-amber-600 bg-amber-50'
+                  : 'text-slate-500 hover:text-amber-600 hover:bg-slate-50'"
+                [title]="'notif.bell_label' | translate">
+          notifications
+          <!-- Unread badge -->
+          <span *ngIf="(hasUnread$ | async)"
+                class="absolute top-0.5 right-0.5 min-w-[16px] h-4 rounded-full
+                       bg-red-500 text-white text-[10px] font-bold
+                       flex items-center justify-center px-[3px] leading-none
+                       pointer-events-none">
+            {{ (unreadCount$ | async) }}
+          </span>
+        </button>
+
+        <!-- backdrop -->
+        <div *ngIf="notifOpen" class="fixed inset-0 z-40" (click)="closeNotif()"></div>
+
+        <!-- notifications dropdown -->
+        <div *ngIf="notifOpen"
+             class="absolute right-0 top-full mt-2 z-50 w-80 bg-white rounded-xl
+                    border border-slate-200 shadow-xl overflow-hidden">
+
+          <!-- Header -->
+          <div class="flex items-center justify-between px-md py-sm
+                      border-b border-slate-100 bg-slate-50/60">
+            <div class="flex items-center gap-xs">
+              <span class="material-symbols-outlined text-amber-500 text-lg">notifications</span>
+              <h6 class="text-label-sm font-semibold text-on-surface">
+                {{ 'notif.bell_label' | translate }}
+              </h6>
+            </div>
+            <span class="text-[11px] text-on-surface-variant">
+              {{ (alerts$ | async)?.length ?? 0 }}
+              {{ 'notif.total' | translate }}
+            </span>
+          </div>
+
+          <!-- Alert list -->
+          <div class="max-h-[320px] overflow-y-auto divide-y divide-slate-100">
+
+            <!-- Empty state -->
+            <div *ngIf="!(alerts$ | async)?.length"
+                 class="flex flex-col items-center gap-sm py-xl px-md text-center">
+              <span class="material-symbols-outlined text-3xl text-slate-300">
+                notifications_off
+              </span>
+              <p class="text-body-sm text-on-surface-variant">
+                {{ 'notif.empty' | translate }}
+              </p>
+            </div>
+
+            <!-- Alert rows -->
+            <div *ngFor="let alert of (alerts$ | async)"
+                 class="flex items-start gap-sm px-md py-sm transition-colors"
+                 [ngClass]="alert.read ? 'bg-white' : 'bg-amber-50/60'">
+
+              <!-- Type icon -->
+              <div class="w-7 h-7 rounded-full flex items-center justify-center
+                          flex-shrink-0 mt-0.5"
+                   [ngClass]="alert.type === 'arrival' ? 'bg-blue-100' : 'bg-amber-100'">
+                <span class="material-symbols-outlined text-base icon-filled"
+                      [ngClass]="alert.type === 'arrival' ? 'text-blue-500' : 'text-amber-600'">
+                  {{ alert.type === 'arrival' ? 'directions_boat' : 'warning' }}
+                </span>
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <!-- Unread dot + vessel ID -->
+                <div class="flex items-center gap-xs">
+                  <span *ngIf="!alert.read"
+                        class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"></span>
+                  <p class="text-label-sm font-semibold text-on-surface truncate">
+                    {{ alert.vesselId }}
+                  </p>
+                </div>
+                <p class="text-body-xs text-on-surface-variant mt-0.5">
+                  {{ alert.reasonKey | translate }}
+                </p>
+                <p class="text-body-xs text-slate-400 mt-0.5">
+                  {{ 'notif.toast.expires' | translate }}&nbsp;{{ formatTime(alert.expiresAt) }}
+                </p>
+              </div>
+
+              <!-- Dismiss button -->
+              <button type="button"
+                      (click)="dismissAlert(alert.id)"
+                      class="text-slate-300 hover:text-slate-500 transition-colors
+                             flex-shrink-0 mt-0.5">
+                <span class="material-symbols-outlined text-base leading-none">close</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <!-- ── Help button ─────────────────────────────────────── -->
       <div class="relative">
         <button type="button"

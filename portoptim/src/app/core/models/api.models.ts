@@ -86,7 +86,7 @@ export interface OptimizationApiRequest {
 
 export type DurationSource = 'provided' | 'rate_model' | 'statistical_model' | 'default';
 export type AssignmentStatus = 'assigned' | 'unassigned' | 'invalid_berth';
-export type PhaseName = 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque';
+export type PhaseName = 'delay' | 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque' | 'waiting_undock';
 
 export interface OperationPhase {
   name: PhaseName;
@@ -111,6 +111,22 @@ export interface OptimizationAssignment {
   status: AssignmentStatus;
   caused_delay_to: string[];
   phases: OperationPhase[];
+  /** Hours of delay applied to this vessel (set by /replan). Used for the red delay segment in the Gantt. */
+  delay_h?: number;
+  /** Hours of early arrival (set by /replan for early_arrival type). Used for statistics only — no visual phase. */
+  early_arrival_h?: number;
+  /** True when docking was delayed by pilot unavailability. */
+  pilot_caused_delay?: boolean;
+  /** True when docking was delayed by tug unavailability. */
+  tug_caused_delay?: boolean;
+  /** Fondeo hours attributable specifically to pilot unavailability. */
+  pilot_wait_h?: number;
+  /** Fondeo hours attributable specifically to tug unavailability. */
+  tug_wait_h?: number;
+  /** True only when this assignment was modified by the early_complete handler
+   *  (user confirmed early cargo completion).  Distinguishes scheduling-induced
+   *  waiting_undock phases from user-triggered early completions. */
+  early_complete?: boolean;
 }
 
 export interface OptimizationKpis {
@@ -127,4 +143,53 @@ export interface OptimizationKpis {
 export interface OptimizationApiResult {
   assignments: OptimizationAssignment[];
   kpis: OptimizationKpis;
+  /** vessel_id → applied delay (h). Present only after a /replan call. */
+  delay_map?: Record<string, number>;
+}
+
+// ── Re-planning ─────────────────────────────────────────────────────────────
+
+export interface VesselDelay {
+  vessel_id: string;
+  delay_h: number;
+  /** "arrival" (vessel not yet docked), "operation" (vessel already at berth), or "early_arrival" (vessel arrived before ETA). */
+  delay_type?: 'arrival' | 'operation' | 'early_arrival';
+}
+
+export interface ReplanRequest {
+  base_assignments: OptimizationAssignment[];
+  delays: VesselDelay[];
+  config: OptimizationApiRequest['config'];
+  vessels: VesselInput[];
+}
+
+export interface ReplanResponse {
+  assignments: OptimizationAssignment[];
+  kpis: OptimizationKpis;
+  replan_triggered: boolean;
+  vessels_affected: string[];
+  conflicts_found: number;
+  delay_map: Record<string, number>;
+}
+
+// ── Early completion ──────────────────────────────────────────────────────────
+
+export interface EarlyCompleteRequest {
+  vessel_id: string;
+  /** ISO 8601 timestamp when the cargo operation actually finished. */
+  complete_time: string;
+  base_assignments: OptimizationAssignment[];
+  config: OptimizationApiRequest['config'];
+  vessels: VesselInput[];
+}
+
+export interface EarlyCompleteResponse {
+  assignments: OptimizationAssignment[];
+  kpis: OptimizationKpis;
+  /** True when waiting vessels for this berth were rescheduled. */
+  replan_triggered: boolean;
+  /** Hours the vessel waited at berth for undocking resources (0 = immediate). */
+  waiting_undock_h: number;
+  /** How many hours earlier the berth is freed vs. the original schedule. */
+  berth_freed_delta_h: number;
 }

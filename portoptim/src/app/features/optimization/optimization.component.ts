@@ -11,7 +11,7 @@ import {
 import { LanguageService } from '../../core/services/language.service';
 import { OptimizationParamsStoreService } from '../../core/services/optimization-params-store.service';
 import { OptimizationResultStoreService } from '../../core/services/optimization-result-store.service';
-import { OptimizationRunnerService } from '../../core/services/optimization-runner.service';
+import { EarlyCompleteInfo, OptimizationRunnerService } from '../../core/services/optimization-runner.service';
 import { TransformationStoreService } from '../../core/services/transformation-store.service';
 import { VesselDetail } from './components/vessel-detail-panel/vessel-detail-panel.component';
 
@@ -42,8 +42,12 @@ interface GanttVessel {
   fondeoH?: number;
   /** True when the operation is past its scheduled end but within the 5 h grace window (not yet completed). */
   showWarning?: boolean;
+  /** True when the vessel's ETA is within [−1 h, +3 h] of now (approaching or recently arrived). */
+  showArrivalWarning?: boolean;
   /** True when the bar starts before this window (continues from the previous window). */
   carryOver?: boolean;
+  /** Total delay applied to this vessel (hours). Drives the red delay segment. */
+  delayH?: number;
 }
 
 interface GanttBerth {
@@ -59,6 +63,10 @@ interface WindowGantt {
   hours: string[];
   /** Human-readable range label shown in the navigation bar. */
   windowLabel: string;
+  /** Unix timestamp for the start of this window — used to find the today window. */
+  startMs: number;
+  /** Unix timestamp for the end of this window. */
+  endMs: number;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -74,10 +82,13 @@ const VESSEL_COLORS = [
 ];
 
 const PHASE_COLORS: Record<string, string> = {
-  fondeo:    'bg-amber-400',
-  atraque:   'bg-sky-500',
-  ejecucion: 'bg-emerald-500',
-  desatraque:'bg-violet-500',
+  delay:                 'bg-red-500',
+  fondeo:                'bg-amber-400',
+  fondeo_resource_wait:  'bg-orange-400',   // fondeo time caused by pilot/tug unavailability
+  atraque:               'bg-sky-500',
+  ejecucion:             'bg-emerald-500',
+  desatraque:            'bg-violet-500',
+  waiting_undock:        'bg-violet-300',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -125,15 +136,31 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   isPanelOpen = false;
   selectedVessel: VesselDetail | null = null;
 
-  // isRunning and optimizerError are surfaced as getters from the runner service
-  // so the run continues even when the user navigates away from this page.
-  get isRunning(): boolean       { return this.runner.isRunning; }
-  get optimizerError(): string | null { return this.runner.error; }
+  // isRunning, optimizerError, isReplanning and replanError are surfaced as
+  // getters from the runner service so state survives component navigation.
+  get isRunning(): boolean              { return this.runner.isRunning; }
+  get optimizerError(): string | null   { return this.runner.error; }
+  get isReplanning(): boolean           { return this.runner.isReplanning; }
+  get replanError(): string | null      { return this.runner.replanError; }
+  get isEarlyCompleting(): boolean                  { return this.runner.isEarlyCompleting;  }
+  get earlyCompleteError(): string | null           { return this.runner.earlyCompleteError; }
+  get earlyCompleteInfo(): EarlyCompleteInfo | null { return this.runner.earlyCompleteInfo;  }
 
   kpis: Kpi[] = [];
   ganttBerths: GanttBerth[] = [];
   ganttHours: string[] = [];
   optimizerResult: OptimizationApiResult | null = null;
+  unresolvedVessels: { id: string; eta: string }[] = [];
+  showUnresolvedList = false;
+
+  /** Optimization-quality metrics — computed whenever a new result is loaded. */
+  qualityStats: {
+    csvAvgDuration:    number;   // avg port-call duration from the CSV baseline
+    optAvgDuration:    number;   // avg total port-call duration from the optimizer
+    avgStayImprovePct: number;   // (csvAvg − optAvg) / csvAvg × 100
+    zeroWaitPct:       number;   // % assigned vessels with waiting_time_h ≈ 0
+    maxWaitH:          number;   // worst-case waiting time (h)
+  } | null = null;
 
   // ── Window navigation ─────────────────────────────────────────────────────
 
@@ -145,7 +172,6 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   private transformResult: TransformApiResponse | null = null;
   private subs: Subscription[] = [];
   private vesselStatusOverrides = new Map<string, string>();
-  private vesselDelayHours      = new Map<string, number>();
 
   constructor(
     private transformStore: TransformationStoreService,
@@ -200,11 +226,17 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   }
 
   prevDay(): void {
-    if (this.selectedDateIndex > 0) this.selectedDateIndex--;
+    if (this.selectedDateIndex > 0) {
+      this.selectedDateIndex--;
+      this.resultStore.ganttWindowIndex = this.selectedDateIndex;
+    }
   }
 
   nextDay(): void {
-    if (this.selectedDateIndex < this.availableDates.length - 1) this.selectedDateIndex++;
+    if (this.selectedDateIndex < this.availableDates.length - 1) {
+      this.selectedDateIndex++;
+      this.resultStore.ganttWindowIndex = this.selectedDateIndex;
+    }
   }
 
   // ── Other getters ─────────────────────────────────────────────────────────
@@ -232,19 +264,6 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   get canRunOptimizer(): boolean {
     return this.hasData && !this.isRunning && this.paramsValidationErrors.length === 0;
-  }
-
-  get utilizationEntries(): { berth: string; pct: number }[] {
-    if (!this.optimizerResult) return [];
-    return Object.entries(this.optimizerResult.kpis.berth_utilization)
-      .map(([berth, pct]) => ({ berth, pct }))
-      .sort((a, b) => b.pct - a.pct);
-  }
-
-  get sourceBreakdownEntries(): { label: string; count: number }[] {
-    if (!this.optimizerResult) return [];
-    return Object.entries(this.optimizerResult.kpis.duration_source_breakdown)
-      .map(([src, count]) => ({ label: SOURCE_LABELS[src] ?? src, count }));
   }
 
   // ── Run optimizer ─────────────────────────────────────────────────────────
@@ -286,24 +305,26 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     this.runner.cancelRun();
     this.resultStore.clear();
     this.runner.clearError();
+    this.runner.resetDelays();
     this.vesselStatusOverrides.clear();
-    this.vesselDelayHours.clear();
   }
 
   applyDelay(delayHours: number): void {
     const vessel = this.selectedVessel;
-    if (!vessel || !this.optimizerResult) return;
-
-    const current = this.vesselDelayHours.get(vessel.name) ?? 0;
-    this.vesselDelayHours.set(vessel.name, current + delayHours);
-
-    // Rebuild gantt with new delay applied
-    this.buildOptimizerView(this.optimizerResult);
-
-    // Re-open the detail panel for the same vessel with updated times
-    const updated = this.filteredGanttBerths.flatMap(b => b.vessels).find(v => v.name === vessel.name)
-                 ?? this.ganttWindows.flatMap(w => w.berths).flatMap(b => b.vessels).find(v => v.name === vessel.name);
-    if (updated) this.openOptimizerDetail(updated);
+    if (!vessel) return;
+    // Close the panel while the replan HTTP call is in flight
+    this.isPanelOpen = false;
+    // Determine delay type by comparing now against the scheduled berth start:
+    //   now < scheduled_start + 3 h → vessel is still in fondeo (or approaching)
+    //                                  → arrival delay (may be absorbed by fondeo slack)
+    //   now >= scheduled_start + 3 h → vessel is well into its berth operation
+    //                                  → operation delay (extends ejecucion)
+    const ARRIVAL_THRESHOLD_MS = 3 * 3_600_000;
+    const now             = Date.now();
+    const schedStartMs    = vessel.scheduledStartMs ?? now;
+    const delayType: 'arrival' | 'operation' =
+      now < schedStartMs + ARRIVAL_THRESHOLD_MS ? 'arrival' : 'operation';
+    this.runner.applyDelay(vessel.name, delayHours, delayType);
   }
 
   confirmOperation(): void {
@@ -311,21 +332,50 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     if (!vessel) return;
 
     const current = vessel.status;
-    let next: string;
-    let nextColor: string;
 
     if (current === 'vessel.status.on_the_way') {
-      next = 'vessel.status.in_progress';
-      nextColor = 'bg-amber-500';
-    } else if (current === 'vessel.status.in_progress') {
-      next = 'vessel.status.completed';
-      nextColor = 'bg-green-500';
-    } else {
-      return;
-    }
+      // Vessel has arrived — mark in_progress locally, then check for early arrival.
+      this.vesselStatusOverrides.set(vessel.name, 'vessel.status.in_progress');
 
-    this.vesselStatusOverrides.set(vessel.name, next);
-    this.selectedVessel = { ...vessel, status: next, statusColor: nextColor };
+      // If the vessel arrived before its planned ETA, trigger an early-arrival replan.
+      // Any remaining wait before the berth is free is shown as extended fondeo (anchorage).
+      const now    = Date.now();
+      const etaMs  = vessel.etaMs ?? now;
+      const earlyH = (etaMs - now) / 3_600_000;
+
+      if (earlyH > 0.1) {
+        this.isPanelOpen = false;
+        // Round to one decimal place for a cleaner value
+        this.runner.applyEarlyArrival(vessel.name, Math.round(earlyH * 10) / 10);
+      } else {
+        this.selectedVessel = { ...vessel, status: 'vessel.status.in_progress', statusColor: 'bg-amber-500' };
+      }
+
+    } else if (current === 'vessel.status.in_progress') {
+      // Cargo operation finished early — trigger early-completion replan
+      this.isPanelOpen = false;
+      // Mark as completed locally so the panel no longer shows the confirm button
+      this.vesselStatusOverrides.set(vessel.name, 'vessel.status.completed');
+      // Use LOCAL time (no Z suffix) so the backend compares against the same
+      // implicit timezone as the stored assignment datetimes (which are naive
+      // local time from the input data, not UTC).
+      this.runner.earlyComplete(vessel.name, this.localNow());
+    }
+  }
+
+  /**
+   * Returns the current local wall-clock time as a naive ISO-8601 string
+   * (format: `YYYY-MM-DDTHH:MM:SS`) — **no** trailing `Z` and no UTC offset.
+   *
+   * All datetimes stored by the backend are naive local-time strings, so this
+   * matches the implicit timezone of the scheduler data regardless of the
+   * server's own clock zone.
+   */
+  private localNow(): string {
+    const d   = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+           `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
   // ── View builders ─────────────────────────────────────────────────────────
@@ -351,15 +401,68 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     const avgFondeo = assigned.length ? totalFondeo / assigned.length : 0;
 
     this.kpis = [
-      { label: 'opt.kpi.total_wait',   value: `${totalFondeo.toFixed(1)} h`, sub: 'opt.kpi.total_wait_sub',   icon: 'anchor', positive: totalFondeo < 1 },
-      { label: 'opt.kpi.avg_wait',     value: `${avgFondeo.toFixed(1)} h`,   sub: 'opt.kpi.avg_wait_sub',     icon: 'anchor', positive: avgFondeo < 1 },
-      { label: 'opt.kpi.improvement',  value: `${kpis.improvement_vs_greedy_pct.toFixed(1)} %`, sub: 'opt.kpi.improvement_sub', icon: 'trending_up', positive: kpis.improvement_vs_greedy_pct >= 0 },
-      { label: 'opt.kpi.unresolved',   value: String(kpis.unresolved_vessels),              sub: 'opt.kpi.unresolved_sub',   icon: 'warning',         positive: kpis.unresolved_vessels === 0 },
+      { label: 'opt.kpi.total_wait',  value: this.formatHours(totalFondeo), sub: 'opt.kpi.total_wait_sub',  icon: 'anchor',  positive: totalFondeo < 1 },
+      { label: 'opt.kpi.avg_wait',    value: this.formatHours(avgFondeo),   sub: 'opt.kpi.avg_wait_sub',    icon: 'anchor',  positive: avgFondeo < 1 },
+      { label: 'opt.kpi.unresolved',  value: String(kpis.unresolved_vessels), sub: 'opt.kpi.unresolved_sub', icon: 'warning', positive: kpis.unresolved_vessels === 0 },
     ];
+
+    // ── Quality stats ────────────────────────────────────────────────────────
+    // CSV baseline: avg of raw duration_hours from the transformation result.
+    const csvCalls = this.transformResult?.data ?? [];
+    const csvAvgDuration = csvCalls.length
+      ? csvCalls.reduce((s, c) => s + c.duration_hours, 0) / csvCalls.length
+      : 0;
+    // Optimizer avg: sum of all phase durations per vessel (fondeo + atraque + ejecucion + desatraque).
+    const optAvgDuration = assigned.length
+      ? assigned.reduce((s, a) => {
+          const totalH = a.phases?.length
+            ? a.phases.reduce((ph, p) => ph + p.duration_h, 0)
+            : a.waiting_time_h + a.duration_estimated_h;
+          return s + totalH;
+        }, 0) / assigned.length
+      : 0;
+    const avgStayImprovePct = csvAvgDuration > 0
+      ? (csvAvgDuration - optAvgDuration) / csvAvgDuration * 100
+      : 0;
+    const zeroWaitPct = assigned.length
+      ? assigned.filter(a => a.waiting_time_h < 0.01).length / assigned.length * 100
+      : 0;
+    const maxWaitH = assigned.length
+      ? Math.max(...assigned.map(a => a.waiting_time_h))
+      : 0;
+    this.qualityStats = { csvAvgDuration, optAvgDuration, avgStayImprovePct, zeroWaitPct, maxWaitH };
+
+    // Build unresolved vessel list for detail panel
+    const callMap = new Map<string, BerthCall>();
+    for (const c of this.transformResult?.data ?? []) callMap.set(c.call_id, c);
+    this.unresolvedVessels = result.assignments
+      .filter(a => a.status !== 'assigned')
+      .map(a => ({
+        id:  a.vessel_id,
+        eta: callMap.has(a.vessel_id)
+          ? new Date(callMap.get(a.vessel_id)!.arrival_time).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '—',
+      }));
+    this.showUnresolvedList = false;
+
     this.ganttWindows = [];
     this.availableDates = [];
     this.selectedDateIndex = 0;
     this.buildOptimizerGantt(result.assignments);
+  }
+
+  formatHours(h: number): string {
+    const totalMinutes = Math.round(h * 60);
+    const years   = Math.floor(totalMinutes / 525_600);
+    const days    = Math.floor((totalMinutes % 525_600) / 1440);
+    const hours   = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts: string[] = [];
+    if (years > 0)   parts.push(`${years}y`);
+    if (days > 0)    parts.push(`${days}d`);
+    if (hours > 0)   parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    return parts.length ? parts.join(' ') : '0m';
   }
 
   // ── Gantt builders ─────────────────────────────────────────────────────────
@@ -417,13 +520,21 @@ export class OptimizationComponent implements OnInit, OnDestroy {
         berths.push({ name: berthId, vessels, laneCount: Math.max(...lanes) + 1 });
       }
 
-      this.ganttWindows.push({ berths, hours: win.labels, windowLabel: win.label });
+      this.ganttWindows.push({ berths, hours: win.labels, windowLabel: win.label, startMs: win.startMs, endMs: win.endMs });
       this.availableDates.push(win.label);
     }
 
-    const first = this.ganttWindows[0];
-    this.ganttHours  = first?.hours ?? [];
-    this.ganttBerths = first?.berths ?? [];
+    // Restore previously-selected window, or fall back to the window containing today.
+    const stored = this.resultStore.ganttWindowIndex;
+    this.selectedDateIndex = (stored >= 0 && stored < this.ganttWindows.length)
+      ? stored
+      : this._todayWindowIndex();
+    // Persist so that a re-build (e.g. re-entry after navigation) keeps the same window.
+    this.resultStore.ganttWindowIndex = this.selectedDateIndex;
+
+    const sel = this.ganttWindows[this.selectedDateIndex];
+    this.ganttHours  = sel?.hours ?? [];
+    this.ganttBerths = sel?.berths ?? [];
   }
 
   /**
@@ -470,11 +581,18 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     return lines;
   }
 
-  /** Returns the fondeo start (vessel arrival time) for an assignment.
-   *  Falls back to scheduled_start − waiting_time_h when phases are absent. */
+  /**
+   * Returns the bar-start timestamp for an assignment.
+   *
+   * Always equals `phases[0].start` when phases are present:
+   *   - no delay        → phases[0] = fondeo  → vessel's original ETA
+   *   - arrival delay   → phases[0] = delay   → original ETA (before delay)
+   *   - operation delay → phases[0] = fondeo  → vessel's ETA (unchanged)
+   *
+   * Falls back to scheduled_start − waiting_time_h when phases are absent.
+   */
   private fondeoStartMs(a: OptimizationAssignment): number {
-    const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
-    if (fondeoPhase) return new Date(fondeoPhase.start).getTime();
+    if (a.phases?.length) return new Date(a.phases[0].start).getTime();
     return new Date(a.scheduled_start).getTime() - a.waiting_time_h * 3_600_000;
   }
 
@@ -482,7 +600,9 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     const visible = assignments.filter(a => a.status !== 'invalid_berth');
     if (!visible.length) return;
 
-    // Windows are anchored to vessel arrival (fondeo start).
+    // Windows are anchored to vessel arrival.
+    // fondeoStartMs(a) returns phases[0].start which is already the original
+    // ETA for delayed vessels (the 'delay' phase is prepended by the backend).
     const startTimes = visible.map(a => this.fondeoStartMs(a));
     const windows = this.computeWindows(startTimes);
 
@@ -503,9 +623,8 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       // fondeo start falls inside it), so that long operations split across
       // window boundaries appear in both the current and the next window.
       const winAssigns = visible.filter(a => {
-        const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
-        const s = this.fondeoStartMs(a) + delayMs;
-        const e = new Date(a.scheduled_end).getTime() + delayMs;
+        const s = this.fondeoStartMs(a);  // phases[0].start = original ETA
+        const e = new Date(a.scheduled_end).getTime();
         return s < win.endMs && e > win.startMs;
       });
       if (!winAssigns.length) continue;
@@ -521,18 +640,16 @@ export class OptimizationComponent implements OnInit, OnDestroy {
         const sorted = [...bAssigns].sort((a, b) =>
           this.fondeoStartMs(a) - this.fondeoStartMs(b)
         );
-        const timings = sorted.map(a => {
-          const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
-          return {
-            startMs: this.fondeoStartMs(a) + delayMs,
-            endMs:   new Date(a.scheduled_end).getTime() + delayMs,
-          };
-        });
+        const timings = sorted.map(a => ({
+          startMs: this.fondeoStartMs(a),              // phases[0].start = original ETA
+          endMs:   new Date(a.scheduled_end).getTime(),
+        }));
         const lanes = assignLanes(timings);
 
         const vessels: GanttVessel[] = sorted.map((a, i) => {
-          const delayMs = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
-          const s = timings[i].startMs;
+          const delayH = a.delay_h ?? 0;
+
+          const s = timings[i].startMs;   // bar start = phases[0].start = original ETA
           const e = timings[i].endMs;
 
           // Does the bar start before / end after this window?
@@ -548,34 +665,78 @@ export class OptimizationComponent implements OnInit, OnDestroy {
           const rawW = barVisualMs / win.durationMs * 100;
           // Warning fires when the operation has passed its scheduled end
           // but is still within the 5 h grace window before "completed" status.
-          const showWarning = e <= nowMs && nowMs < e + 5 * 3_600_000;
+          // Suppressed when the vessel has been explicitly marked as completed
+          // (via confirmOperation / early-complete) — no uncertainty in that case.
+          const schedEndMs  = new Date(a.scheduled_end).getTime();
+          const isCompleted = this.vesselStatusOverrides.get(a.vessel_id) === 'vessel.status.completed';
+          const showWarning = !isCompleted && schedEndMs <= nowMs && nowMs < schedEndMs + 5 * 3_600_000;
+          // Arrival warning: vessel approaching or arrived within last 3 h.
+          const etaMs = timings[i].startMs;  // phases[0].start = original ETA
+          const showArrivalWarning =
+            !isCompleted &&
+            nowMs >= etaMs - 1 * 3_600_000 &&
+            nowMs <  etaMs + 3 * 3_600_000;
 
-          // ── Phase segments: clip each phase to [visStart, visEnd] ──────────
+          // ── Phase segments ──────────────────────────────────────────────────
+          // The backend already inserts a 'delay' phase at the correct position:
+          //   arrival delay  → phases[0] = delay, phases[1] = fondeo, …
+          //   operation delay→ fondeo, atraque, ejecucion, delay, desatraque
+          // We just iterate a.phases in order and clip each to [visStart, visEnd].
           let phaseSegments: PhaseSegment[] | undefined;
-          if (a.status === 'assigned' && a.phases?.length >= 4 && barVisualMs > 0) {
+          if (a.status === 'assigned' && a.phases?.length && barVisualMs > 0) {
+            const resourceWaitH = Math.max(a.pilot_wait_h ?? 0, a.tug_wait_h ?? 0);
             const segs: PhaseSegment[] = [];
             for (const p of a.phases) {
               if (p.duration_h <= 0) continue;
-              const phaseStartMs = new Date(p.start).getTime() + delayMs;
-              const phaseEndMs   = new Date(p.end).getTime()   + delayMs;
-              const pVisStart = Math.max(phaseStartMs, visStart);
-              const pVisEnd   = Math.min(phaseEndMs,   visEnd);
-              if (pVisEnd <= pVisStart) continue; // phase entirely outside this window
-              segs.push({
-                widthPct:   `${((pVisEnd - pVisStart) / barVisualMs * 100).toFixed(2)}%`,
-                colorClass: PHASE_COLORS[p.name] ?? 'bg-slate-400',
-                name:       p.name,
-              });
+              const phaseStartMs = new Date(p.start).getTime();
+              const phaseEndMs   = new Date(p.end).getTime();
+
+              if (p.name === 'fondeo' && resourceWaitH > 0.01) {
+                // Split fondeo into berth-wait (amber) + resource-wait (orange at the end).
+                // The resource wait occupies the last `resourceWaitH` hours of fondeo.
+                const resStartMs = phaseEndMs - resourceWaitH * 3_600_000;
+
+                // Berth-wait portion
+                const bVS = Math.max(phaseStartMs, visStart);
+                const bVE = Math.min(resStartMs,   visEnd);
+                if (bVE > bVS) {
+                  segs.push({
+                    widthPct:   `${((bVE - bVS) / barVisualMs * 100).toFixed(2)}%`,
+                    colorClass: 'bg-amber-400',
+                    name:       'fondeo',
+                  });
+                }
+
+                // Resource-wait portion
+                const rVS = Math.max(resStartMs,  visStart);
+                const rVE = Math.min(phaseEndMs,  visEnd);
+                if (rVE > rVS) {
+                  segs.push({
+                    widthPct:   `${((rVE - rVS) / barVisualMs * 100).toFixed(2)}%`,
+                    colorClass: 'bg-orange-400',
+                    name:       'fondeo_resource_wait',
+                  });
+                }
+              } else {
+                const pVisStart = Math.max(phaseStartMs, visStart);
+                const pVisEnd   = Math.min(phaseEndMs,   visEnd);
+                if (pVisEnd <= pVisStart) continue;
+                segs.push({
+                  widthPct:   `${((pVisEnd - pVisStart) / barVisualMs * 100).toFixed(2)}%`,
+                  colorClass: PHASE_COLORS[p.name] ?? 'bg-slate-400',
+                  name:       p.name,
+                });
+              }
             }
             if (segs.length) phaseSegments = segs;
           }
 
-          // ── Fondeo badge: only when the fondeo phase is visible here ────────
+          // ── Fondeo badge: only when fondeo phase is visible here ────────────
           let fondeoH: number | undefined;
           const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
           if (fondeoPhase && fondeoPhase.duration_h > 0) {
-            const fStartMs = new Date(fondeoPhase.start).getTime() + delayMs;
-            const fEndMs   = new Date(fondeoPhase.end).getTime()   + delayMs;
+            const fStartMs = new Date(fondeoPhase.start).getTime();
+            const fEndMs   = new Date(fondeoPhase.end).getTime();
             if (fStartMs < win.endMs && fEndMs > win.startMs) {
               fondeoH = fondeoPhase.duration_h;
             }
@@ -595,19 +756,53 @@ export class OptimizationComponent implements OnInit, OnDestroy {
             phaseSegments,
             fondeoH,
             showWarning,
+            showArrivalWarning,
+            delayH: delayH > 0 ? delayH : undefined,
           };
         });
 
         berths.push({ name: berthId, vessels, laneCount: Math.max(...lanes) + 1 });
       }
 
-      this.ganttWindows.push({ berths, hours: win.labels, windowLabel: win.label });
+      this.ganttWindows.push({ berths, hours: win.labels, windowLabel: win.label, startMs: win.startMs, endMs: win.endMs });
       this.availableDates.push(win.label);
     }
 
-    const first = this.ganttWindows[0];
-    this.ganttHours  = first?.hours ?? [];
-    this.ganttBerths = first?.berths ?? [];
+    // Restore previously-selected window, or fall back to the window containing today.
+    const stored = this.resultStore.ganttWindowIndex;
+    this.selectedDateIndex = (stored >= 0 && stored < this.ganttWindows.length)
+      ? stored
+      : this._todayWindowIndex();
+    this.resultStore.ganttWindowIndex = this.selectedDateIndex;
+
+    const sel = this.ganttWindows[this.selectedDateIndex];
+    this.ganttHours  = sel?.hours ?? [];
+    this.ganttBerths = sel?.berths ?? [];
+  }
+
+  // ── Window helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Returns the index in `ganttWindows` whose time range contains today.
+   *
+   * Fallback rules:
+   *  - Today is before the first window → index 0 (show earliest data).
+   *  - Today is after the last window   → last index (show most recent data).
+   *  - No windows at all                → 0.
+   */
+  private _todayWindowIndex(): number {
+    if (!this.ganttWindows.length) return 0;
+    const nowMs = Date.now();
+    const idx = this.ganttWindows.findIndex(
+      w => nowMs >= w.startMs && nowMs < w.endMs
+    );
+    if (idx !== -1) return idx;
+    // Today is past every window → show the last one.
+    if (nowMs >= this.ganttWindows[this.ganttWindows.length - 1].endMs) {
+      return this.ganttWindows.length - 1;
+    }
+    // Today is before every window → show the first one.
+    return 0;
   }
 
   // ── Window computation ────────────────────────────────────────────────────
@@ -651,12 +846,10 @@ export class OptimizationComponent implements OnInit, OnDestroy {
 
   private historicalKpis(calls: BerthCall[], result: TransformApiResponse): Kpi[] {
     const uniqueBerths = new Set(calls.map(c => c.berth_id)).size;
-    const avgDuration  = calls.length ? calls.reduce((s, c) => s + c.duration_hours, 0) / calls.length : 0;
     const skipped = result.transformation_summary.skipped_rows;
     return [
-      { label: 'opt.hist.vessels', value: String(calls.length),            sub: 'opt.hist.vessels_sub', icon: 'directions_boat', positive: true },
-      { label: 'opt.hist.berths',  value: String(uniqueBerths),            sub: 'opt.hist.berths_sub',  icon: 'dock',            positive: true },
-      { label: 'opt.hist.avg_dur', value: `${avgDuration.toFixed(1)} h`,   sub: 'opt.hist.avg_dur_sub', icon: 'timer',           positive: true },
+      { label: 'opt.hist.vessels', value: String(calls.length), sub: 'opt.hist.vessels_sub', icon: 'directions_boat', positive: true },
+      { label: 'opt.hist.berths',  value: String(uniqueBerths), sub: 'opt.hist.berths_sub',  icon: 'dock',            positive: true },
       { label: 'opt.hist.skipped', value: String(skipped), sub: skipped === 0 ? 'opt.hist.skipped_ok' : 'opt.hist.skipped_warn', icon: 'warning', positive: skipped === 0 },
     ];
   }
@@ -688,10 +881,10 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     const a = vessel.assignment!;
     const override    = this.vesselStatusOverrides.get(a.vessel_id);
     const now         = Date.now();
-    const delayMs     = (this.vesselDelayHours.get(a.vessel_id) ?? 0) * 3_600_000;
-    // fondeoMs = vessel arrival at port (start of anchorage waiting)
-    const fondeoMs    = this.fondeoStartMs(a) + delayMs;
-    const endMs       = new Date(a.scheduled_end).getTime() + delayMs;
+    // After a replan, delay is baked into the assignment's phases.
+    // fondeoMs = vessel arrival at port (start of anchorage waiting, post-delay)
+    const fondeoMs    = this.fondeoStartMs(a);
+    const endMs       = new Date(a.scheduled_end).getTime();
     const started     = fondeoMs <= now;          // vessel has arrived at port
     const departed    = endMs + 5 * 3_600_000 <= now;
 
@@ -709,10 +902,17 @@ export class OptimizationComponent implements OnInit, OnDestroy {
     // Look up original BerthCall for vessel properties not stored in the assignment
     const call = this.transformResult?.data.find(c => c.call_id === a.vessel_id);
 
-    // canAddDelay: any vessel that hasn't been marked completed yet (on_the_way,
-    // in_progress, or inside the 5 h grace window after scheduled_end).
-    const canAddDelay = !departed;
-    const accumulatedDelay = this.vesselDelayHours.get(a.vessel_id);
+    // canAddDelay: vessel hasn't been marked completed (time-based OR explicit
+    // operator confirmation via confirmOperation / early-complete).
+    const canAddDelay = !departed && override !== 'vessel.status.completed';
+    const rawDelay = a.delay_h ?? this.runner.getVesselDelay(a.vessel_id);
+    const accumulatedDelay = rawDelay > 0 ? rawDelay : undefined;
+
+    // etaMs: the planned fondeo (ETA) start — used by confirmOperation() to detect early arrival.
+    const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
+    const plannedEtaMs = fondeoPhase
+      ? new Date(fondeoPhase.start).getTime()
+      : fondeoMs;
 
     this.selectedVessel = {
       name: a.vessel_id,
@@ -736,10 +936,14 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       pilotAssigned:     a.pilot_assigned,
       tugsRequired:      a.tugs_required,
       tugsAssigned:      a.tugs_assigned,
+      pilotWaitH:        (a.pilot_wait_h ?? 0) > 0.01 ? a.pilot_wait_h : undefined,
+      tugWaitH:          (a.tug_wait_h   ?? 0) > 0.01 ? a.tug_wait_h   : undefined,
       optimizerStatus:   a.status,
       phases:            a.phases?.length ? a.phases : undefined,
       canAddDelay,
       delayHours:        accumulatedDelay,
+      scheduledStartMs:  new Date(a.scheduled_start).getTime(),
+      etaMs:             plannedEtaMs,
     };
     this.isPanelOpen = true;
   }

@@ -124,8 +124,8 @@
               <div class="bg-teal-500 h-2.5 rounded-full transition-all"
                    [style.width]="(m.avgDuration / maxDurValue * 100) + '%'"></div>
             </div>
-            <span class="text-body-sm font-semibold text-on-surface w-20 text-right flex-shrink-0">
-              {{ m.avgDuration.toFixed(1) }} {{ 'stats.dur.unit' | translate }}
+            <span class="text-body-sm font-semibold text-on-surface w-28 text-right flex-shrink-0">
+              {{ formatHours(m.avgDuration) }}
             </span>
             <span class="text-body-sm text-on-surface-variant w-16 text-right flex-shrink-0 flex items-center justify-end gap-xs">
               <span class="material-symbols-outlined text-sm">directions_boat</span>
@@ -276,7 +276,7 @@
       </div>
     </div>
 
-    <!-- ── Distribución de Llegadas por Hora ──────────────────────────────── -->
+    <!-- ── Distribución de Llegadas y Salidas por Hora ──────────────────────── -->
     <div *ngIf="arrivalHours.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
       <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -287,30 +287,90 @@
       </div>
 
       <div class="px-lg pt-lg pb-sm">
-        <!-- Vertical bars -->
-        <div class="flex items-end gap-0.5 h-36">
+
+        <!-- Legend -->
+        <div class="flex items-center gap-lg mb-md">
+          <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+            <span class="w-3 h-3 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+            {{ 'stats.hours.arrivals' | translate }}
+          </span>
+          <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+            <span class="w-3 h-3 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
+            {{ 'stats.hours.departures' | translate }}
+          </span>
+        </div>
+
+        <!-- Overlapping vertical bars (mirrors optimizer chart) -->
+        <div class="flex items-end gap-0.5 h-36 overflow-visible">
           <div *ngFor="let h of arrivalHours"
-               class="flex-1 min-w-0 flex flex-col justify-end h-full"
-               [title]="h.count + ' arr.'">
-            <div class="w-full rounded-t-sm transition-all"
-                 [ngClass]="h.count > 0 ? 'bg-sky-500' : 'bg-slate-200'"
-                 [style.height]="(h.barPct || 1) + '%'"></div>
+               class="flex-1 min-w-0 h-full relative group cursor-default">
+
+            <!-- Tooltip -->
+            <div *ngIf="h.arrivalCount > 0 || h.departureCount > 0"
+                 class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                        pointer-events-none min-w-[120px]
+                        bg-white border border-slate-200 rounded-xl shadow-lg px-sm py-xs">
+              <p class="text-[10px] font-semibold text-on-surface-variant text-center pb-xs mb-xs border-b border-slate-100">
+                {{ padHour(h.hour) }}:00 – {{ h.hour + 1 < 24 ? padHour(h.hour + 1) : '00' }}:00
+              </p>
+              <div class="flex items-center justify-between gap-sm">
+                <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
+                  <span class="w-2 h-2 rounded-sm bg-sky-500 inline-block"></span>
+                  {{ 'stats.hours.arrivals' | translate }}
+                </span>
+                <strong class="text-[11px] text-on-surface">{{ h.arrivalCount }}</strong>
+              </div>
+              <div class="flex items-center justify-between gap-sm mt-xs">
+                <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
+                  <span class="w-2 h-2 rounded-sm bg-violet-500 inline-block opacity-80"></span>
+                  {{ 'stats.hours.departures' | translate }}
+                </span>
+                <strong class="text-[11px] text-on-surface">{{ h.departureCount }}</strong>
+              </div>
+            </div>
+
+            <!-- Empty hour -->
+            <div *ngIf="h.arrivalCount === 0 && h.departureCount === 0"
+                 class="absolute bottom-0 left-0 right-0 bg-slate-200 rounded-t-sm h-[2%]"></div>
+            <!-- Arrivals (sky blue — behind) -->
+            <div *ngIf="h.arrivalCount > 0"
+                 class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-sky-500"
+                 [style.height]="h.arrivalPct + '%'"></div>
+            <!-- Departures (violet — in front, 80% opacity) -->
+            <div *ngIf="h.departureCount > 0"
+                 class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-violet-500 opacity-80"
+                 [style.height]="h.departurePct + '%'"></div>
           </div>
         </div>
+
         <!-- Hour labels -->
         <div class="flex gap-0.5 mt-xs">
           <div *ngFor="let h of arrivalHours" class="flex-1 min-w-0 text-center">
             <span class="text-[9px] text-on-surface-variant leading-none">{{ padHour(h.hour) }}</span>
           </div>
         </div>
-        <!-- Peak hour summary -->
-        <div class="flex justify-center mt-md pt-md border-t border-slate-100">
-          <p class="text-body-sm text-on-surface-variant">
+
+        <!-- Peak summary (arrivals + departures) -->
+        <div class="flex justify-center gap-xl mt-md pt-md border-t border-slate-100">
+          <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+            <span class="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
+            {{ 'stats.hours.arrivals' | translate }}
+            <span class="text-slate-300 mx-xs">·</span>
             {{ 'stats.hours.peak' | translate }}:
-            <strong class="text-on-surface">
-              {{ padHour(arrivalHours[0]?.hour ?? 0) }}h – {{ padHour((arrivalHours[0]?.hour ?? 0) + 1) }}h
+            <strong class="text-on-surface ml-xs">
+              {{ padHour(peakArrivalHour) }}:00 – {{ peakArrivalHour + 1 < 24 ? padHour(peakArrivalHour + 1) : '00' }}:00
             </strong>
-          </p>
+          </span>
+          <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
+            <span class="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
+            {{ 'stats.hours.departures' | translate }}
+            <span class="text-slate-300 mx-xs">·</span>
+            {{ 'stats.hours.peak' | translate }}:
+            <strong class="text-on-surface ml-xs">
+              {{ padHour(peakDepartureHour) }}:00 – {{ peakDepartureHour + 1 < 24 ? padHour(peakDepartureHour + 1) : '00' }}:00
+            </strong>
+          </span>
         </div>
       </div>
     </div>
@@ -647,8 +707,8 @@
               <div class="flex-1 bg-slate-100 rounded-full h-2">
                 <div class="h-2 rounded-full transition-all" [ngClass]="p.colorClass" [style.width]="p.barPct + '%'"></div>
               </div>
-              <span class="text-body-sm font-semibold text-on-surface w-16 text-right flex-shrink-0">{{ formatHours(p.totalH) }}</span>
-              <span class="text-body-sm text-on-surface-variant w-16 text-right flex-shrink-0">Ø {{ formatHours(p.avgH) }}</span>
+              <span class="text-body-sm font-semibold text-on-surface w-28 text-right flex-shrink-0">{{ formatHours(p.totalH) }}</span>
+              <span class="text-body-sm text-on-surface-variant w-24 text-right flex-shrink-0">Ø {{ formatHours(p.avgH) }}</span>
             </div>
             <p *ngIf="!optiPhases.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
           </div>
@@ -724,8 +784,10 @@
         </div>
       </div>
 
-      <!-- ── 6. [EXTRA] Duration sources ─────────────────────────────────────── -->
+      <!-- ── 6. [EXTRA] Duration sources + Schedule changes ──────────────────── -->
       <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
+
+        <!-- Duration Sources header -->
         <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
           <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
             <span class="material-symbols-outlined text-teal-600">model_training</span>
@@ -733,6 +795,8 @@
           </h4>
           <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.dur_source.hint' | translate }}</p>
         </div>
+
+        <!-- Duration sources rows -->
         <div class="p-lg space-y-sm">
           <div *ngFor="let ds of optiDurSources" class="flex items-center gap-md">
             <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ ds.labelKey | translate }}</span>
@@ -744,6 +808,109 @@
           </div>
           <p *ngIf="!optiDurSources.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
         </div>
+
+        <!-- ── Schedule changes sub-section ─────────────────────────────────── -->
+        <div *ngIf="optiReplanChanges" class="border-t border-slate-100">
+
+          <!-- Sub-header -->
+          <div class="px-lg py-sm bg-slate-50/50 flex justify-between items-center">
+            <p class="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-xs">
+              <span class="material-symbols-outlined text-base text-rose-500">sync_alt</span>
+              {{ 'stats.opt.replan.title' | translate }}
+            </p>
+            <p class="text-[11px] text-on-surface-variant hidden lg:block">{{ 'stats.opt.replan.hint' | translate }}</p>
+          </div>
+
+          <div class="px-lg pb-lg pt-sm space-y-sm">
+
+            <!-- Row helper: label / bar / count / % -->
+
+            <!-- Operation delay (amber — same colour as berth-delay segment) -->
+            <div class="flex items-center gap-md">
+              <div class="w-2.5 h-2.5 rounded-sm bg-amber-500 flex-shrink-0"></div>
+              <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
+                    [title]="'stats.opt.replan.op_delay_hint' | translate">
+                {{ 'stats.opt.replan.op_delay' | translate }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="bg-amber-500 h-2 rounded-full transition-all"
+                     [style.width]="(optiReplanChanges.operationDelay / optiReplanMaxCount * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-8 text-right flex-shrink-0">
+                {{ optiReplanChanges.operationDelay }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-12 text-right flex-shrink-0">
+                {{ replanPct(optiReplanChanges.operationDelay).toFixed(0) }}%
+              </span>
+            </div>
+
+            <!-- Early completion (emerald — user-triggered, early_complete === true) -->
+            <div class="flex items-center gap-md">
+              <div class="w-2.5 h-2.5 rounded-sm bg-emerald-500 flex-shrink-0"></div>
+              <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
+                    [title]="'stats.opt.replan.early_complete_hint' | translate">
+                {{ 'stats.opt.replan.early_complete' | translate }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="bg-emerald-500 h-2 rounded-full transition-all"
+                     [style.width]="(optiReplanChanges.earlyComplete / optiReplanMaxCount * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-8 text-right flex-shrink-0">
+                {{ optiReplanChanges.earlyComplete }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-12 text-right flex-shrink-0">
+                {{ replanPct(optiReplanChanges.earlyComplete).toFixed(0) }}%
+              </span>
+            </div>
+
+            <!-- Arrival delay (red — same colour as delay segment in Gantt) -->
+            <div class="flex items-center gap-md">
+              <div class="w-2.5 h-2.5 rounded-sm bg-red-500 flex-shrink-0"></div>
+              <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
+                    [title]="'stats.opt.replan.arrival_delay_hint' | translate">
+                {{ 'stats.opt.replan.arrival_delay' | translate }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="bg-red-500 h-2 rounded-full transition-all"
+                     [style.width]="(optiReplanChanges.arrivalDelay / optiReplanMaxCount * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-8 text-right flex-shrink-0">
+                {{ optiReplanChanges.arrivalDelay }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-12 text-right flex-shrink-0">
+                {{ replanPct(optiReplanChanges.arrivalDelay).toFixed(0) }}%
+              </span>
+            </div>
+
+            <!-- Early arrival (sky blue — vessels that arrived before their ETA) -->
+            <div class="flex items-center gap-md">
+              <div class="w-2.5 h-2.5 rounded-sm bg-sky-400 flex-shrink-0"></div>
+              <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
+                    [title]="'stats.opt.replan.early_arrival_hint' | translate">
+                {{ 'stats.opt.replan.early_arrival' | translate }}
+              </span>
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="bg-sky-400 h-2 rounded-full transition-all"
+                     [style.width]="(optiReplanChanges.earlyArrival / optiReplanMaxCount * 100) + '%'"></div>
+              </div>
+              <span class="text-body-sm font-semibold text-on-surface w-8 text-right flex-shrink-0">
+                {{ optiReplanChanges.earlyArrival }}
+              </span>
+              <span class="text-body-sm text-on-surface-variant w-12 text-right flex-shrink-0">
+                {{ replanPct(optiReplanChanges.earlyArrival).toFixed(0) }}%
+              </span>
+            </div>
+
+            <!-- No-changes message when all are zero -->
+            <p *ngIf="optiReplanChanges.operationDelay === 0 && optiReplanChanges.earlyComplete === 0 && optiReplanChanges.arrivalDelay === 0 && optiReplanChanges.earlyArrival === 0"
+               class="text-body-sm text-on-surface-variant text-center py-xs">
+              {{ 'stats.opt.replan.none' | translate }}
+            </p>
+
+          </div>
+        </div>
+        <!-- /schedule changes -->
+
       </div>
 
       <!-- ── 7. [EXTRA] Resource Allocation by Month ───────────────────────── -->
@@ -810,20 +977,53 @@
             </p>
             <div class="flex flex-wrap gap-sm">
               <div *ngFor="let y of optiYearResources"
-                   class="flex items-center gap-sm px-md py-sm bg-slate-50 border border-slate-200 rounded-lg">
+                   class="flex items-center gap-sm px-md py-sm bg-slate-50 border border-slate-200 rounded-lg flex-wrap">
                 <span class="text-label-sm font-bold text-on-surface">{{ y.year }}</span>
                 <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
-                <span class="flex items-center gap-xs text-body-sm">
+                <!-- True minimum = unconstrained peak demand (min fleet for zero waits) -->
+                <span class="flex items-center gap-xs text-body-sm"
+                      [title]="'stats.opt.resources.peak_pilots_hint' | translate">
                   <span class="material-symbols-outlined text-sm text-teal-600">person</span>
-                  <strong class="text-on-surface">{{ y.pilotsNeededFte }}</strong>
-                  <span class="text-on-surface-variant">{{ 'stats.opt.resources.pilots' | translate }}</span>
+                  <strong class="text-on-surface">{{ y.finalMinPilots }}</strong>
+                  <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.pilots' | translate }}</span>
                 </span>
                 <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
-                <span class="flex items-center gap-xs text-body-sm">
+                <span class="flex items-center gap-xs text-body-sm"
+                      [title]="'stats.opt.resources.peak_tugs_hint' | translate">
                   <span class="material-symbols-outlined text-sm text-sky-500">directions_boat</span>
-                  <strong class="text-on-surface">{{ y.tugsNeededFte }}</strong>
-                  <span class="text-on-surface-variant">{{ 'stats.opt.resources.tugs' | translate }}</span>
+                  <strong class="text-on-surface">{{ y.finalMinTugs }}</strong>
+                  <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.tugs' | translate }}</span>
                 </span>
+                <!-- Pilot fondeo wait -->
+                <ng-container *ngIf="y.totalPilotWaitH > 0">
+                  <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
+                  <span class="flex items-center gap-xs text-body-sm"
+                        [title]="'stats.opt.resources.pilot_wait_hint' | translate">
+                    <span class="material-symbols-outlined text-sm text-amber-500">person_alert</span>
+                    <strong class="text-amber-600">{{ formatHours(y.totalPilotWaitH) }}</strong>
+                    <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.pilot_wait' | translate }}</span>
+                  </span>
+                </ng-container>
+                <!-- Tug fondeo wait -->
+                <ng-container *ngIf="y.totalTugWaitH > 0">
+                  <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
+                  <span class="flex items-center gap-xs text-body-sm"
+                        [title]="'stats.opt.resources.tug_wait_hint' | translate">
+                    <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
+                    <strong class="text-amber-600">{{ formatHours(y.totalTugWaitH) }}</strong>
+                    <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.tug_wait' | translate }}</span>
+                  </span>
+                </ng-container>
+                <!-- Total undocking wait -->
+                <ng-container *ngIf="y.totalWaitUndockH > 0">
+                  <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
+                  <span class="flex items-center gap-xs text-body-sm"
+                        [title]="'stats.opt.resources.undock_wait_hint' | translate">
+                    <span class="material-symbols-outlined text-sm text-violet-500">hourglass_top</span>
+                    <strong class="text-violet-600">{{ formatHours(y.totalWaitUndockH) }}</strong>
+                    <span class="text-on-surface-variant">{{ 'stats.opt.resources.undock_wait' | translate }}</span>
+                  </span>
+                </ng-container>
               </div>
             </div>
           </div>
@@ -836,7 +1036,7 @@
                 <!-- Month label -->
                 <p class="text-label-sm font-semibold text-on-surface">{{ monthLabel(m.year, m.month) }}</p>
 
-                <!-- Pilots row -->
+                <!-- Pilots row (true minimum = unconstrained peak demand) -->
                 <div class="flex items-center gap-md">
                   <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
                     <span class="material-symbols-outlined text-sm text-teal-600">person</span>
@@ -844,14 +1044,15 @@
                   </span>
                   <div class="flex-1 bg-slate-100 rounded-full h-3">
                     <div class="bg-teal-500 h-3 rounded-full transition-all"
-                         [style.width]="(maxOptiResourcePilots > 0 ? m.pilotsNeededFte / maxOptiResourcePilots * 100 : 0) + '%'"></div>
+                         [style.width]="(maxOptiResourcePilots > 0 ? m.finalMinPilots / maxOptiResourcePilots * 100 : 0) + '%'"></div>
                   </div>
-                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0">
-                    {{ m.pilotsNeededFte }}
+                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0"
+                        [title]="'stats.opt.resources.peak_pilots_hint' | translate">
+                    {{ m.finalMinPilots }}
                   </span>
                 </div>
 
-                <!-- Tugs row -->
+                <!-- Tugs row (true minimum = unconstrained peak demand) -->
                 <div class="flex items-center gap-md">
                   <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
                     <span class="material-symbols-outlined text-sm text-sky-500">directions_boat</span>
@@ -859,10 +1060,27 @@
                   </span>
                   <div class="flex-1 bg-slate-100 rounded-full h-3">
                     <div class="bg-sky-500 h-3 rounded-full transition-all"
-                         [style.width]="(maxOptiResourceTugs > 0 ? m.tugsNeededFte / maxOptiResourceTugs * 100 : 0) + '%'"></div>
+                         [style.width]="(maxOptiResourceTugs > 0 ? m.finalMinTugs / maxOptiResourceTugs * 100 : 0) + '%'"></div>
                   </div>
-                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0">
-                    {{ m.tugsNeededFte }}
+                  <span class="text-body-sm font-bold text-on-surface w-10 text-right flex-shrink-0"
+                        [title]="'stats.opt.resources.peak_tugs_hint' | translate">
+                    {{ m.finalMinTugs }}
+                  </span>
+                </div>
+
+                <!-- Resource fondeo wait (only shown when > 0) -->
+                <div *ngIf="m.pilotWaitH > 0 || m.tugWaitH > 0" class="flex items-center gap-sm pl-[7.5rem] flex-wrap">
+                  <span *ngIf="m.pilotWaitH > 0"
+                        class="flex items-center gap-xs text-[11px] text-amber-600"
+                        [title]="'stats.opt.resources.pilot_wait_hint' | translate">
+                    <span class="material-symbols-outlined text-xs">person_alert</span>
+                    {{ formatHours(m.pilotWaitH) }} {{ 'stats.opt.resources.pilot_wait' | translate }}
+                  </span>
+                  <span *ngIf="m.tugWaitH > 0"
+                        class="flex items-center gap-xs text-[11px] text-amber-600"
+                        [title]="'stats.opt.resources.tug_wait_hint' | translate">
+                    <span class="material-symbols-outlined text-xs">warning</span>
+                    {{ formatHours(m.tugWaitH) }} {{ 'stats.opt.resources.tug_wait' | translate }}
                   </span>
                 </div>
 

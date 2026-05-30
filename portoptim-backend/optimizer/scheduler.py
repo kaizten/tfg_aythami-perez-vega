@@ -80,7 +80,7 @@ class ResourcePool:
         ]
 
     def _free_from(self, idx: int, from_time: datetime) -> datetime:
-        """Earliest time ≥ from_time when unit *idx* is free."""
+        """Earliest time >= from_time when unit *idx* is free."""
         t = from_time
         changed = True
         while changed:
@@ -91,32 +91,88 @@ class ResourcePool:
                     changed = True
         return t
 
-    def earliest_n_available(self, n: int, from_time: datetime) -> datetime:
+    def _free_from_for_duration(self, idx: int, from_time: datetime, duration_h: float) -> datetime:
         """
-        Earliest time ≥ from_time when at least *n* units are simultaneously free.
+        Earliest time T >= from_time when unit *idx* is free for the entire
+        window [T, T + duration_h).
 
-        Returns *from_time* immediately if n ≤ 0.
-        Clamps n to the pool size.
+        Unlike _free_from (which only checks a single instant), this method
+        advances T past any interval that overlaps the target window, preventing
+        a scenario where the unit appears free at T but is already committed
+        during part of [T, T+duration_h) — the root cause of resource
+        over-booking in adjacent time slots.
+        """
+        window = timedelta(hours=duration_h)
+        t = from_time
+        changed = True
+        while changed:
+            changed = False
+            t_end = t + window
+            for iv_start, iv_end in self._intervals[idx]:
+                if iv_start < t_end and iv_end > t:
+                    t = iv_end
+                    changed = True
+                    break
+        return t
+
+    def earliest_n_available(self, n: int, from_time: datetime, duration_h: float = 0.0) -> datetime:
+        """
+        Earliest time >= *from_time* when at least *n* units are simultaneously
+        free for the full [T, T + duration_h) window.
+
+        Uses an iterative approach: starting from *from_time*, find the n-th-smallest
+        "free-from" time T*, then retry from T* until the candidate stabilises.
+        Each iteration strictly advances T so termination is guaranteed (all
+        intervals are finite).
+
+        Returns *from_time* immediately if n <= 0.  Clamps n to the pool size.
         """
         if n <= 0:
             return from_time
         n = min(n, self._count)
-        free_times = sorted(self._free_from(i, from_time) for i in range(self._count))
-        # free_times[n-1] is when the n-th soonest-free unit becomes available.
-        return free_times[n - 1]
+        t = from_time
+        while True:
+            if duration_h > 0.0:
+                free_times = sorted(
+                    self._free_from_for_duration(i, t, duration_h)
+                    for i in range(self._count)
+                )
+            else:
+                free_times = sorted(self._free_from(i, t) for i in range(self._count))
+            candidate = free_times[n - 1]
+            if candidate <= t:
+                return t
+            t = candidate
+
+    def copy(self) -> "ResourcePool":
+        """Return a deep copy of this pool — used by LocalSearch to branch simulations."""
+        new_pool = object.__new__(ResourcePool)
+        new_pool._count     = self._count
+        new_pool._intervals = [list(ivs) for ivs in self._intervals]
+        return new_pool
 
     def allocate_n(self, n: int, start: datetime, duration_h: float) -> None:
         """
         Mark *n* units as busy for [start, start + duration_h).
 
-        Selects the n units with the earliest free_from(start) to minimise
-        resource fragmentation.
+        Units are selected by sorting on _free_from_for_duration so that only
+        units that are completely free for the full [start, start+duration_h)
+        window are chosen first.  Using the instant-only _free_from would allow
+        picking a unit that appears free at *start* but already has a booking
+        partway through the window, causing two vessels to share the same
+        physical resource simultaneously.
         """
         if n <= 0:
             return
         n = min(n, self._count)
         end = start + timedelta(hours=duration_h)
-        by_free = sorted(range(self._count), key=lambda i: self._free_from(i, start))
+        if duration_h > 0.0:
+            by_free = sorted(
+                range(self._count),
+                key=lambda i: self._free_from_for_duration(i, start, duration_h),
+            )
+        else:
+            by_free = sorted(range(self._count), key=lambda i: self._free_from(i, start))
         for idx in by_free[:n]:
             self._intervals[idx].append((start, end))
             self._intervals[idx].sort()
@@ -315,37 +371,75 @@ class Scheduler:
                     continue
                 ns, ne, t_start = slot
 
-                # Step 2: apply resource constraints — 1 pilot + n_tugs at docking
-                pilot_free = self.pilots.earliest_n_available(1, t_start)
-                tug_free = self.tugs.earliest_n_available(n_tugs, t_start)
-                resource_start = max(pilot_free, tug_free)
-
-                pilot_caused = False
-                tug_caused = False
-
-                if resource_start > t_start:
-                    conflicts_resolved += 1
-                    pilot_caused = pilot_free > t_start
-                    tug_caused = tug_free > t_start
-                    slot2 = _find_slot(state, v.eslora, resource_start, dur_h)
-                    if slot2 is None:
-                        results.append(_make_unassigned(v, bid, dur_h, src, n_tugs))
-                        continue
-                    ns, ne, t_start = slot2
-
-                t_end = t_start + timedelta(hours=dur_h)
-                wait_h = max(0.0, (t_start - v.eta).total_seconds() / 3600)
-
                 maneuver_h = estimate_maneuver_duration(
                     v.eslora, _cargo_group(v), self.calibration
                 )
 
-                # Commit: docking manoeuvre resources (t_start) + undocking (t_end)
-                self.pilots.allocate_n(1, t_start, maneuver_h)
-                self.pilots.allocate_n(1, t_end, maneuver_h)
-                self.tugs.allocate_n(n_tugs, t_start, maneuver_h)
-                self.tugs.allocate_n(n_tugs, t_end, maneuver_h)
-                _commit_slot(state, ns, ne, t_start, t_end, v.id, v.eslora)
+                # Step 2: Satisfy DOCKING resource constraints only.
+                # If pilot/tugs are not free at t_start, delay t_start so the
+                # vessel waits longer in fondeo (anchorage).
+                # Undocking resource contention is handled separately in Step 3
+                # by inserting a "waiting_undock" phase — this matches the real
+                # port semantics: a vessel that cannot undock because resources
+                # are busy stays at the berth and waits (not in fondeo).
+                pilot_caused = False
+                tug_caused   = False
+                unassignable = False
+
+                for _iter in range(8):
+                    # Pass duration_h so the check covers the full manoeuvre window,
+                    # not just the instant t_start.  Without this, a slot that looks
+                    # free at t_start can still overlap an adjacent pre-booked interval.
+                    pilot_dock = self.pilots.earliest_n_available(1,     t_start, duration_h=maneuver_h)
+                    tug_dock   = self.tugs.earliest_n_available(n_tugs, t_start, duration_h=maneuver_h)
+                    resource_start = max(pilot_dock, tug_dock)
+
+                    if resource_start <= t_start:
+                        break  # Docking constraints satisfied
+
+                    if _iter == 0:
+                        conflicts_resolved += 1
+                    pilot_caused = pilot_caused or (pilot_dock > t_start)
+                    tug_caused   = tug_caused   or (tug_dock   > t_start)
+
+                    new_slot = _find_slot(state, v.eslora, resource_start, dur_h)
+                    if new_slot is None:
+                        unassignable = True
+                        break
+                    ns, ne, t_start = new_slot
+
+                if unassignable:
+                    results.append(_make_unassigned(v, bid, dur_h, src, n_tugs))
+                    continue
+
+                # Track how much of the fondeo wait was caused by resources
+                # (vs. berth unavailability).
+                berth_only_start = slot[2] if slot else t_start  # slot=(ns,ne,t_berth)
+                pilot_wait_h_val = max(0.0, (pilot_dock - berth_only_start).total_seconds() / 3600) if pilot_caused else 0.0
+                tug_wait_h_val   = max(0.0, (tug_dock   - berth_only_start).total_seconds() / 3600) if tug_caused   else 0.0
+
+                t_end  = t_start + timedelta(hours=dur_h)
+                wait_h = max(0.0, (t_start - v.eta).total_seconds() / 3600)
+
+                # Step 3: Check UNDOCKING resources.
+                # Desatraque starts at t_end - maneuver_h.  Pass duration_h so the
+                # check confirms resources remain free for the full manoeuvre.
+                desatraque_start = t_end - timedelta(hours=maneuver_h)
+                pilot_undock = self.pilots.earliest_n_available(1,     desatraque_start, duration_h=maneuver_h)
+                tug_undock   = self.tugs.earliest_n_available(n_tugs, desatraque_start, duration_h=maneuver_h)
+                undock_start = max(pilot_undock, tug_undock)  # actual desatraque start
+
+                waiting_undock_h = max(0.0, (undock_start - desatraque_start).total_seconds() / 3600)
+                actual_t_end     = undock_start + timedelta(hours=maneuver_h)
+
+                # Commit berth slot until the vessel actually leaves
+                _commit_slot(state, ns, ne, t_start, actual_t_end, v.id, v.eslora)
+
+                # Allocate pilot/tug resources at the correct manoeuvre windows
+                self.pilots.allocate_n(1,     t_start,      maneuver_h)
+                self.pilots.allocate_n(1,     undock_start, maneuver_h)
+                self.tugs.allocate_n(n_tugs, t_start,      maneuver_h)
+                self.tugs.allocate_n(n_tugs, undock_start, maneuver_h)
 
                 logger.info(
                     "vessel_scheduled",
@@ -354,18 +448,40 @@ class Scheduler:
                     scheduled_start=t_start.isoformat(),
                     waiting_h=round(wait_h, 2),
                     duration_h=round(dur_h, 2),
+                    waiting_undock_h=round(waiting_undock_h, 2),
                     source=src,
                     tugs_required=n_tugs,
                 )
 
+                # Build phases; insert waiting_undock if vessel had to wait
                 vessel_phases = build_phases(
                     eta=v.eta,
                     scheduled_start=t_start,
-                    scheduled_end=t_end,
+                    scheduled_end=t_end,          # pass original t_end so phases are sized correctly
                     waiting_time_h=wait_h,
                     duration_estimated_h=dur_h,
                     maneuver_h=maneuver_h,
                 )
+                if waiting_undock_h > 0.01:
+                    new_phases: list[OperationPhase] = []
+                    for _p in vessel_phases:
+                        if _p.name == "desatraque":
+                            # Insert wait phase before the shifted desatraque
+                            new_phases.append(OperationPhase(
+                                name="waiting_undock",
+                                start=desatraque_start,
+                                end=undock_start,
+                                duration_h=round(waiting_undock_h, 4),
+                            ))
+                            new_phases.append(OperationPhase(
+                                name="desatraque",
+                                start=undock_start,
+                                end=actual_t_end,
+                                duration_h=round(maneuver_h, 4),
+                            ))
+                        else:
+                            new_phases.append(_p)
+                    vessel_phases = new_phases
 
                 results.append(
                     AssignmentResult(
@@ -374,7 +490,7 @@ class Scheduler:
                         noray_start=ns if isinstance(state, ContinuousBerthState) else None,
                         noray_end=ne if isinstance(state, ContinuousBerthState) else None,
                         scheduled_start=t_start,
-                        scheduled_end=t_end,
+                        scheduled_end=actual_t_end,  # includes any waiting_undock + desatraque
                         waiting_time_h=wait_h,
                         duration_estimated_h=dur_h,
                         duration_source=src,
@@ -387,6 +503,8 @@ class Scheduler:
                         caused_delay_to=[],
                         maneuver_h=maneuver_h,
                         phases=vessel_phases,
+                        pilot_wait_h=round(pilot_wait_h_val, 4),
+                        tug_wait_h=round(tug_wait_h_val,   4),
                     )
                 )
 

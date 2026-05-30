@@ -29,7 +29,7 @@
       <!-- Text -->
       <div class="flex-1 min-w-0">
         <p class="text-label-md font-semibold text-on-surface">
-          {{ 'opt.toast.title' | translate }}
+          {{ toastType === 'replan' ? ('opt.toast.replan_title' | translate) : ('opt.toast.title' | translate) }}
         </p>
       </div>
 
@@ -40,7 +40,7 @@
         class="flex items-center gap-xs px-md py-xs rounded-full flex-shrink-0
                bg-teal-600 hover:bg-teal-700 active:bg-teal-800
                text-label-sm font-semibold text-white transition-colors">
-        {{ 'opt.toast.cta' | translate }}
+        {{ toastType === 'replan' ? ('opt.toast.replan_cta' | translate) : ('opt.toast.cta' | translate) }}
         <span class="material-symbols-outlined text-sm leading-none">
           arrow_forward
         </span>

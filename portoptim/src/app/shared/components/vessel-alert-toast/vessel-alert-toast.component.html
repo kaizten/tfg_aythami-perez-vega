@@ -1,0 +1,71 @@
+<!--
+  Vessel alert toasts — stacked vertically, newest at the bottom.
+  Each entry slides in and out independently; the outer flex column just
+  provides the spacing between simultaneously-visible cards.
+
+  top-16  = just below the 64px topbar
+  z-1100  = below topbar (z-1200) but above page content
+-->
+<div class="fixed top-16 right-8 z-[1100] w-[400px] flex flex-col gap-2 pointer-events-none">
+
+  <ng-container *ngFor="let entry of toasts; trackBy: trackByAlert">
+    <div
+      *ngIf="entry.visible"
+      class="pointer-events-none w-full"
+      [ngClass]="entry.sliding ? 'toast-slide-in' : 'toast-slide-out'"
+    >
+      <div class="pointer-events-auto bg-white rounded-b-2xl shadow-xl
+                  border border-slate-200 border-t-0 overflow-hidden">
+
+        <!-- ── Main row ──────────────────────────────────────────────── -->
+        <div class="flex items-center gap-md px-lg py-md">
+
+          <!-- Type icon -->
+          <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+               [ngClass]="entry.alert.type === 'arrival' ? 'bg-blue-50' : 'bg-amber-50'">
+            <span class="material-symbols-outlined text-xl icon-filled"
+                  [ngClass]="entry.alert.type === 'arrival' ? 'text-blue-500' : 'text-amber-500'">
+              {{ entry.alert.type === 'arrival' ? 'directions_boat' : 'warning' }}
+            </span>
+          </div>
+
+          <!-- Text block -->
+          <div class="flex-1 min-w-0">
+            <p class="text-label-md font-semibold text-on-surface">
+              {{ 'notif.toast.title' | translate }}
+            </p>
+            <p class="text-body-sm text-on-surface-variant truncate mt-0.5">
+              <span class="font-semibold text-on-surface">{{ entry.alert.vesselId }}</span>
+              &nbsp;—&nbsp;{{ entry.alert.reasonKey | translate }}
+            </p>
+            <p class="text-body-xs text-slate-400 mt-0.5">
+              {{ 'notif.toast.expires' | translate }}&nbsp;{{ entry.expiresLabel }}
+            </p>
+          </div>
+
+          <!-- Dismiss button -->
+          <button
+            type="button"
+            (click)="dismiss(entry)"
+            class="text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0 ml-xs -mr-xs">
+            <span class="material-symbols-outlined text-lg leading-none">close</span>
+          </button>
+        </div>
+
+        <!-- ── Progress bar ───────────────────────────────────────────── -->
+        <div class="h-[3px] w-full bg-slate-100">
+          <div *ngIf="entry.progressing"
+               class="h-full toast-progress-bar"
+               [ngClass]="{
+                 'bg-blue-500':               entry.alert.type === 'arrival',
+                 'bg-amber-500':              entry.alert.type === 'departure',
+                 'toast-progress-bar--drain': entry.draining
+               }">
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </ng-container>
+
+</div>

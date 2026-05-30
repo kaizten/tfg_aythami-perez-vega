@@ -28,6 +28,8 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
   sliding = false;
   /** Progress bar present in DOM. */
   progressing = false;
+  /** "optimizer" for a full run, "replan" for any replan/early-complete. */
+  toastType: 'optimizer' | 'replan' = 'optimizer';
   /**
    * Activates the drain transition one frame after the bar appears.
    * Two-flag pattern avoids @keyframes (which linters flag for property changes):
@@ -51,10 +53,19 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
       // Show toast when a run completes outside /optimization.
       this.runner.showNotification$.subscribe(show => {
         if (show) {
+          this.toastType = 'optimizer';
           this.slideIn();
-        } else if (this.visible && !this.dismissing) {
-          // An external caller (e.g. OptimizationComponent.ngOnInit) cleared
-          // the notification — slide out gracefully.
+        } else if (this.visible && !this.dismissing && this.toastType === 'optimizer') {
+          this.slideOut();
+        }
+      }),
+
+      // Show toast when a replan completes outside /optimization.
+      this.runner.showReplanNotification$.subscribe(show => {
+        if (show) {
+          this.toastType = 'replan';
+          this.slideIn();
+        } else if (this.visible && !this.dismissing && this.toastType === 'replan') {
           this.slideOut();
         }
       }),
@@ -76,7 +87,11 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     if (this.dismissing) return;
     this.dismissing = true;
     this.slideOut();
-    this.runner.dismissNotification();
+    if (this.toastType === 'replan') {
+      this.runner.dismissReplanNotification();
+    } else {
+      this.runner.dismissNotification();
+    }
     setTimeout(() => { this.dismissing = false; }, SLIDE_DURATION_MS + 60);
   }
 

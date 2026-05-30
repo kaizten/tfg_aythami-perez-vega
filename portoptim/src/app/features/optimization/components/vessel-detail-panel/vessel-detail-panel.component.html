@@ -186,20 +186,34 @@
           </div>
           <div>
             <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.pilot' | translate }}</p>
-            <span class="material-symbols-outlined text-xl"
-                  [ngClass]="vessel?.pilotAssigned ? 'text-teal-600' : 'text-slate-400'">
-              {{ vessel?.pilotAssigned ? 'check_circle' : 'cancel' }}
-            </span>
+            <div class="flex items-center gap-xs flex-wrap">
+              <span class="material-symbols-outlined text-xl"
+                    [ngClass]="vessel?.pilotAssigned ? 'text-teal-600' : 'text-slate-400'">
+                {{ vessel?.pilotAssigned ? 'check_circle' : 'cancel' }}
+              </span>
+              <span *ngIf="vessel?.pilotWaitH"
+                    class="flex items-center gap-xs text-[11px] text-orange-600 font-semibold"
+                    [title]="'opt.detail.pilot_wait_hint' | translate">
+                <span class="material-symbols-outlined text-xs">person_alert</span>
+                +{{ hoursToHHMM(vessel!.pilotWaitH!) }}
+              </span>
+            </div>
           </div>
           <div>
             <p class="text-label-sm text-on-surface-variant mb-xs">{{ 'opt.detail.tug' | translate }}</p>
-            <div class="flex items-center gap-xs">
+            <div class="flex items-center gap-xs flex-wrap">
               <span class="material-symbols-outlined text-xl"
                     [ngClass]="vessel?.tugsRequired === 0 ? 'text-slate-300' : vessel?.tugsAssigned ? 'text-teal-600' : 'text-slate-400'">
                 {{ vessel?.tugsRequired === 0 ? 'do_not_disturb_on' : vessel?.tugsAssigned ? 'check_circle' : 'cancel' }}
               </span>
               <span class="text-body-sm font-semibold text-on-surface-variant">
                 {{ vessel?.tugsRequired }}
+              </span>
+              <span *ngIf="vessel?.tugWaitH"
+                    class="flex items-center gap-xs text-[11px] text-orange-600 font-semibold"
+                    [title]="'opt.detail.tug_wait_hint' | translate">
+                <span class="material-symbols-outlined text-xs">warning</span>
+                +{{ hoursToHHMM(vessel!.tugWaitH!) }}
               </span>
             </div>
           </div>
@@ -219,6 +233,7 @@
           <p class="text-label-sm text-amber-800 font-semibold">{{ 'vessel.delay_hours' | translate }}</p>
           <div class="flex items-center gap-sm">
             <input type="number" min="0.5" step="0.5"
+                   aria-label="Delay hours"
                    [value]="pendingDelayH"
                    (input)="pendingDelayH = +$any($event.target).value"
                    [title]="'vessel.delay_hours' | translate"

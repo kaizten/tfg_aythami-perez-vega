@@ -1,0 +1,30 @@
+// Same animation / icon-fill helpers as optimization-toast.component.scss
+
+.icon-filled {
+  font-variation-settings: 'FILL' 1;
+}
+
+:host {
+  display: contents;
+}
+
+.toast-slide-in {
+  transform: translateY(0);
+  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1.1);
+}
+
+.toast-slide-out {
+  transform: translateY(-110%);
+  transition: transform 320ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.toast-progress-bar {
+  transform-origin: left;
+  transform: scaleX(1);
+  transition: none;
+}
+
+.toast-progress-bar--drain {
+  transform: scaleX(0);
+  transition: transform 6s linear;
+}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -177,6 +177,8 @@ class AssignmentResult:
     caused_delay_to: list[str] = field(default_factory=list)
     maneuver_h: float = 0.5           # single-manoeuvre duration used to build phases
     phases: list[OperationPhase] = field(default_factory=list)
+    pilot_wait_h: float = 0.0         # fondeo hours attributable to pilot unavailability
+    tug_wait_h: float = 0.0           # fondeo hours attributable to tug unavailability
 
 
 # ── Output model ──────────────────────────────────────────────────────────────
@@ -184,3 +186,75 @@ class AssignmentResult:
 class OptimizationResponse(BaseModel):
     assignments: list[dict]
     kpis: dict
+
+
+# ── Re-planning models ────────────────────────────────────────────────────────
+
+class VesselDelay(BaseModel):
+    """A single delay directive: add *delay_h* hours to a vessel's ETA or operation."""
+    vessel_id: str
+    delay_h: float = Field(gt=0)
+    delay_type: Literal["arrival", "operation", "early_arrival"] = "arrival"
+    """
+    ``arrival``       — vessel hasn't docked yet; delay shifts ETA (fondeo absorbs if possible).
+    ``operation``     — vessel is already docked; delay extends the operation (ejecucion phase).
+    ``early_arrival`` — vessel arrived *before* its ETA; *delay_h* is the number of hours
+                        it arrived early.  Prepends a cyan ``early_arrival`` phase; berth
+                        times are unchanged (no conflict possible).
+    """
+
+
+class ReplanRequest(BaseModel):
+    """
+    Input for the re-planning endpoint.
+
+    base_assignments  — current schedule (as returned by /run or a previous /replan)
+    delays            — delays to apply (total accumulated, not incremental)
+    config            — port configuration (same as the original /run request)
+    vessels           — original vessel inputs (used when a full re-run is needed)
+    """
+    base_assignments: list[dict]
+    delays: list[VesselDelay]
+    config: OptimizationConfig
+    vessels: list[VesselInput]
+
+
+class ReplanResponse(BaseModel):
+    assignments: list[dict]
+    kpis: dict
+    replan_triggered: bool
+    """True when actual conflicts were found and the optimizer re-ran."""
+    vessels_affected: list[str]
+    conflicts_found: int
+    delay_map: dict[str, float]
+    """vessel_id → total delay applied (hours), for Gantt visualisation."""
+
+
+# ── Early-completion models ───────────────────────────────────────────────────
+
+class EarlyCompleteRequest(BaseModel):
+    """
+    Input for the early-completion endpoint.
+
+    vessel_id      — vessel that finished its cargo operation before schedule
+    complete_time  — ISO 8601 timestamp when the cargo operation actually ended
+    base_assignments — current schedule (as returned by /run or /replan)
+    config         — port configuration
+    vessels        — original vessel inputs
+    """
+    vessel_id: str
+    complete_time: str  # ISO 8601
+    base_assignments: list[dict]
+    config: OptimizationConfig
+    vessels: list[VesselInput]
+
+
+class EarlyCompleteResponse(BaseModel):
+    assignments: list[dict]
+    kpis: dict
+    replan_triggered: bool
+    """True when waiting vessels for this berth were pulled forward."""
+    waiting_undock_h: float
+    """Hours the vessel had to wait at berth for undocking resources (0 = immediate)."""
+    berth_freed_delta_h: float
+    """How many hours earlier the berth is freed vs. the original schedule."""

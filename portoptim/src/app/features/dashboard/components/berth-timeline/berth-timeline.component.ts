@@ -31,6 +31,8 @@ interface GanttVessel {
   fondeoH?: number;
   /** True when the operation is past its scheduled end but within the 5 h grace window. */
   showWarning?: boolean;
+  /** Total delay applied to this vessel (hours). Drives the red delay segment. */
+  delayH?: number;
 }
 
 interface GanttBerth {
@@ -50,10 +52,13 @@ const VESSEL_COLORS = [
 ];
 
 const PHASE_COLORS: Record<string, string> = {
-  fondeo:    'bg-amber-400',
-  atraque:   'bg-sky-500',
-  ejecucion: 'bg-emerald-500',
-  desatraque:'bg-violet-500',
+  delay:                'bg-red-500',
+  fondeo:               'bg-amber-400',
+  fondeo_resource_wait: 'bg-orange-400',
+  atraque:              'bg-sky-500',
+  ejecucion:            'bg-emerald-500',
+  desatraque:           'bg-violet-500',
+  waiting_undock:       'bg-violet-300',
 };
 
 const HOUR_LABELS = [
@@ -283,10 +288,16 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Returns the vessel arrival timestamp (start of fondeo phase). */
+  /**
+   * Returns the bar-start timestamp for an assignment.
+   *
+   * Always equals `phases[0].start` when phases are present:
+   *   - no delay        → phases[0] = fondeo  → vessel's original ETA
+   *   - arrival delay   → phases[0] = delay   → original ETA (before delay)
+   *   - operation delay → phases[0] = fondeo  → vessel's ETA (unchanged)
+   */
   private fondeoStartMs(a: OptimizationAssignment): number {
-    const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
-    if (fondeoPhase) return new Date(fondeoPhase.start).getTime();
+    if (a.phases?.length) return new Date(a.phases[0].start).getTime();
     return new Date(a.scheduled_start).getTime() - a.waiting_time_h * 3_600_000;
   }
 
@@ -295,7 +306,8 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
 
     const daySet = new Set<number>();
     for (const a of this.allAssignments) {
-      // Use fondeo start so days that only contain anchorage activity are included.
+      // fondeoStartMs returns phases[0].start which is already the original ETA
+      // (the 'delay' phase, if any, is phases[0] for arrival delays).
       const s = floorToDay(this.fondeoStartMs(a));
       const e = floorToDay(new Date(a.scheduled_end).getTime());
       for (let d = s; d <= e; d += DAY_MS) daySet.add(d);
@@ -323,8 +335,8 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     const dayEnd   = dayStart + DAY_MS;
     const nowMs    = Date.now();
 
-    // Include any assignment whose full range (fondeo → scheduled_end) overlaps
-    // this 24h window.
+    // Include any assignment whose full range (original ETA → scheduled_end) overlaps
+    // this 24h window. fondeoStartMs returns phases[0].start = original ETA.
     const dayAssignments = this.allAssignments.filter(a => {
       const s = this.fondeoStartMs(a);
       const e = new Date(a.scheduled_end).getTime();
@@ -345,14 +357,15 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
       );
 
       const clampedTimings = sorted.map(a => ({
-        startMs: Math.max(this.fondeoStartMs(a), dayStart),
+        startMs: Math.max(this.fondeoStartMs(a), dayStart),  // phases[0].start = original ETA
         endMs:   Math.min(new Date(a.scheduled_end).getTime(), dayEnd),
       }));
       const lanes = assignLanes(clampedTimings);
 
       const vessels: GanttVessel[] = sorted.map((a, i) => {
-        const rawS = this.fondeoStartMs(a);
-        const rawE = new Date(a.scheduled_end).getTime();
+        const delayH = a.delay_h ?? 0;
+        const rawS   = this.fondeoStartMs(a);  // phases[0].start = original ETA
+        const rawE   = new Date(a.scheduled_end).getTime();
         const clippedLeft  = rawS < dayStart;
         const clippedRight = rawE > dayEnd;
         const visStart = clampedTimings[i].startMs;
@@ -362,22 +375,51 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
         // ⚠ Warning: operation has passed its end but is within the 5 h grace window
         const showWarning = rawE <= nowMs && nowMs < rawE + 5 * 3_600_000;
 
-        // Phase segments — all 4 phases (including fondeo), each clipped to [visStart, visEnd]
+        // Phase segments — backend inserts 'delay' phase at the right position:
+        //   arrival delay  → [delay, fondeo, atraque, ejecucion, desatraque]
+        //   operation delay→ [fondeo, atraque, ejecucion, delay, desatraque]
+        // Just iterate a.phases in order and clip each to [visStart, visEnd].
         let phaseSegments: PhaseSegment[] | undefined;
-        if (a.phases?.length >= 4 && visDur > 0) {
+        if (a.phases?.length && visDur > 0) {
+          const resourceWaitH = Math.max(a.pilot_wait_h ?? 0, a.tug_wait_h ?? 0);
           const segments: PhaseSegment[] = [];
           for (const phase of a.phases) {
             if (phase.duration_h <= 0) continue;
             const ps = new Date(phase.start).getTime();
             const pe = new Date(phase.end).getTime();
-            const visPhaseStart = Math.max(ps, visStart);
-            const visPhaseEnd   = Math.min(pe, visEnd);
-            if (visPhaseEnd > visPhaseStart) {
-              segments.push({
-                widthPct:   `${((visPhaseEnd - visPhaseStart) / visDur * 100).toFixed(2)}%`,
-                colorClass: PHASE_COLORS[phase.name] ?? 'bg-slate-400',
-                name: phase.name,
-              });
+
+            if (phase.name === 'fondeo' && resourceWaitH > 0.01) {
+              const resStartMs = pe - resourceWaitH * 3_600_000;
+
+              const bVS = Math.max(ps, visStart);
+              const bVE = Math.min(resStartMs, visEnd);
+              if (bVE > bVS) {
+                segments.push({
+                  widthPct:   `${((bVE - bVS) / visDur * 100).toFixed(2)}%`,
+                  colorClass: 'bg-amber-400',
+                  name: 'fondeo',
+                });
+              }
+
+              const rVS = Math.max(resStartMs, visStart);
+              const rVE = Math.min(pe, visEnd);
+              if (rVE > rVS) {
+                segments.push({
+                  widthPct:   `${((rVE - rVS) / visDur * 100).toFixed(2)}%`,
+                  colorClass: 'bg-orange-400',
+                  name: 'fondeo_resource_wait',
+                });
+              }
+            } else {
+              const visPhaseStart = Math.max(ps, visStart);
+              const visPhaseEnd   = Math.min(pe, visEnd);
+              if (visPhaseEnd > visPhaseStart) {
+                segments.push({
+                  widthPct:   `${((visPhaseEnd - visPhaseStart) / visDur * 100).toFixed(2)}%`,
+                  colorClass: PHASE_COLORS[phase.name] ?? 'bg-slate-400',
+                  name: phase.name,
+                });
+              }
             }
           }
           if (segments.length) phaseSegments = segments;
@@ -405,6 +447,7 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
           phaseSegments,
           fondeoH,
           showWarning,
+          delayH: delayH > 0 ? delayH : undefined,
         };
       });
 
