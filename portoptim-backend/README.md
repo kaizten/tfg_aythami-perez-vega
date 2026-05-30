@@ -61,6 +61,8 @@ Interactive API docs available at **`http://localhost:8000/docs`**.
 | `GET` | `/health` | Liveness probe |
 | `POST` | `/api/v1/transform/` | Upload CSV/Excel → returns transformed `BerthCall` array |
 | `POST` | `/api/v1/optimize/run` | Run the scheduling optimizer → returns assignments + KPIs |
+| `POST` | `/api/v1/optimize/replan` | Re-plan after vessel delays → returns updated schedule |
+| `POST` | `/api/v1/optimize/early_complete` | Handle early cargo-operation completion → cascades pull-forward |
 | `GET` | `/api/v1/optimize/calibration-stats` | Inspect loaded calibration model statistics |
 | `POST` | `/api/v1/optimize/calibrate` | Load a historical CSV and fit the duration model |
 | `WebSocket` | `/ws/ais-stream` | Live AIS vessel position relay (fan-out to all connected dashboard clients) |
@@ -149,8 +151,6 @@ Vessels are partitioned by ETA date and optimised one day at a time.  Berth stat
 
 Eslora buckets: `<80 m`, `80–150 m`, `150–220 m`, `>220 m`.
 
-The `maneuver_model` is fitted using a statistical proxy: `0.08 × eslora / 10` hours base (≈ 5 min per 10 m of vessel length) plus `+0.3 h` for hazardous cargo (`Energético` / `Químicos`).  Cells with fewer than 5 observations fall back to `0.5 + 0.3 × hazardous` hours.  Query via `get_maneuver_duration(eslora, grupo_mercancia)`.
-
 ### Phase 2 — Greedy scheduling
 
 Within each berth, vessels are sorted by **GT descending** (higher gross tonnage docks first). For each vessel:
@@ -187,24 +187,59 @@ Modifiers applied on top of the base value:
 | `cargo_group` is `"Energético"` or `"Químicos"` (hazardous) | +1 tug |
 | `has_bow_thruster = True` | −1 tug (minimum 0) |
 
-The result is always in **[0, 4]**.  Tugs are consumed only during the docking manoeuvre and the undocking manoeuvre (duration from `estimate_maneuver_duration`), **not** during the full berth stay.  If fewer tugs are available than required, the vessel waits.
+The result is always in **[0, 4]**.  Tugs are consumed only during the docking manoeuvre and the undocking manoeuvre, **not** during the full berth stay.  If fewer tugs are available than required, the vessel waits.
 
 #### Resource pool model
 
-Pilot and tug pools use an **interval-based** availability model: each unit tracks a list of non-overlapping busy intervals.  This correctly handles the two-event consumption pattern — a unit booked for docking at 08:00–09:00 and pre-booked for undocking at 32:00–33:00 is correctly reported as free in the intervening window.
+Pilot and tug pools use an **interval-based** availability model: each unit tracks a list of non-overlapping busy intervals.  This correctly handles the two-event consumption pattern — a unit booked for docking at 08:00–09:00 and pre-booked for undocking at 32:00–33:00 is correctly reported as free in the intervening window.  `ResourcePool.copy()` enables the local search to branch pool state without mutating the caller's pools.
 
-When a vessel's docking is delayed by a resource shortage, the responsible resource type (`pilot_caused_delay`, `tug_caused_delay`) is flagged on the assignment for KPI reporting.
+When a vessel's docking is delayed by a resource shortage, the responsible resource type (`pilot_caused_delay`, `tug_caused_delay`) is flagged on the assignment for KPI reporting.  `pilot_wait_h` and `tug_wait_h` record the actual hours attributable to each resource type.
 
-### Phase 3 — Local search (intra-berth swap)
+### Phase 3 — Local search (intra-berth swap, resource-aware)
 
 Tries all pairwise permutations within each berth.  A swap is accepted only when:
 - It does not violate the GT priority rule (higher GT cannot follow lower GT if both vessels were simultaneously available)
-- It strictly reduces total waiting time for the group
+- It strictly reduces **total waiting time** for the group — including resource-induced delays
 
-**Stopping criteria**: 500 iterations or improvement < 0.5 % in the last 50 iterations.
+Resource awareness is achieved via **background pools**: before optimising each berth, pilot/tug pools are pre-loaded with all manoeuvre commitments from the other berths' current-best schedules.  Each candidate ordering is simulated against these background pools (deep-copied per simulation so allocations never cross-contaminate).  This prevents the local search from accepting swaps that reduce berth wait but create resource conflicts against other berths.
 
-### Request format
+**Stopping criteria**: 500 iterations or no improvement in the last 50 iterations.
 
+### Dynamic re-planning (`/replan`)
+
+Re-plans the schedule after one or more vessel delays without discarding the full prior schedule.
+
+**Steps:**
+1. Apply the delay to the affected vessel(s): `arrival` delays extend the fondeo phase; `operation` delays extend `estimated_duration_h`; `early_arrival` delays move the ETA backwards.
+2. Run conflict detection (`conflict.py`) — checks for berth, pilot, and tug violations.
+3. **No conflict** → fondeo absorbed the delay; return the updated schedule as-is.
+4. **Conflict** → partial re-run: only the affected berth(s) are re-optimised; all other berths remain frozen.
+
+The response includes `replan_triggered`, `vessels_affected`, `conflicts_found`, and a `delay_map` used by the frontend to render red delay segments in the Gantt.
+
+### Early cargo-operation completion (`/early_complete`)
+
+Called when a vessel finishes cargo before its scheduled end.
+
+**Steps:**
+1. Truncate the `ejecucion` phase to the actual completion time.
+2. Find the earliest undocking slot respecting pilot and tug availability; insert a `waiting_undock` phase (light purple in the Gantt) if resources are busy.
+3. Update `desatraque` and `scheduled_end`.
+4. **Cascade pull-forward**: if the berth is freed significantly earlier, vessels waiting in fondeo for this berth are advanced to the earliest feasible slot respecting resource availability.
+
+### Conflict detection (`conflict.py`)
+
+`detect_conflicts(assignments, delays_map, config)` scans the updated schedule for:
+
+| Conflict type | Condition |
+|---|---|
+| `berth` | Two vessels at the same berth have overlapping `[scheduled_start, scheduled_end)` windows |
+| `pilot` | More than `num_pilots` vessels have overlapping docking/undocking manoeuvre windows |
+| `tug` | The sum of `tugs_required` across overlapping manoeuvre windows exceeds `num_tugs` |
+
+### Request formats
+
+**`/run`**
 ```json
 {
   "vessels": [
@@ -216,11 +251,7 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
       "target_berth": "05 ARAGO",
       "has_bow_thruster": false,
       "operations": [
-        {
-          "tipo_operacion": "Desembarque",
-          "grupo_mercancia": "Energético",
-          "cantidad": 25000
-        }
+        { "tipo_operacion": "Desembarque", "grupo_mercancia": "Energético", "cantidad": 25000 }
       ],
       "estimated_duration_h": null
     }
@@ -231,25 +262,39 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
     "default_duration_h": 48,
     "overlap_factor": 0.70,
     "mooring_zones": [
-      {
-        "berth_id": "05 ARAGO",
-        "bap_type": "continuous",
-        "noray_max": 53
-      },
-      {
-        "berth_id": "17 QUIMICA 4",
-        "bap_type": "discrete",
-        "capacity": 2
-      }
+      { "berth_id": "05 ARAGO", "bap_type": "continuous", "noray_max": 53 },
+      { "berth_id": "17 QUIMICA 4", "bap_type": "discrete", "capacity": 2 }
     ]
   }
 }
 ```
 
-> `has_bow_thruster` defaults to `false` (conservative assumption) when not supplied.  
-> `estimated_duration_h` takes absolute priority when provided — the model is skipped entirely.
+**`/replan`**
+```json
+{
+  "base_assignments": [ /* current schedule from /run or prior /replan */ ],
+  "delays": [
+    { "vessel_id": "T202200020", "delay_h": 3.5, "delay_type": "arrival" }
+  ],
+  "config": { /* same as /run config */ },
+  "vessels": [ /* original vessel inputs */ ]
+}
+```
 
-### Response format
+`delay_type` values: `"arrival"` (vessel delayed at sea) · `"operation"` (cargo operation running long) · `"early_arrival"` (vessel arrived before ETA).
+
+**`/early_complete`**
+```json
+{
+  "vessel_id": "T202200020",
+  "complete_time": "2024-01-15T18:30:00",
+  "base_assignments": [ /* current schedule */ ],
+  "config": { /* same as /run config */ },
+  "vessels": [ /* original vessel inputs */ ]
+}
+```
+
+### Response format (`/run`)
 
 ```json
 {
@@ -268,6 +313,10 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
       "tugs_required": 3,
       "tugs_assigned": true,
       "status": "assigned",
+      "pilot_caused_delay": false,
+      "tug_caused_delay": true,
+      "pilot_wait_h": 0.0,
+      "tug_wait_h": 1.5,
       "caused_delay_to": [],
       "phases": [
         { "name": "fondeo",     "start": "2024-01-15T08:00:00", "end": "2024-01-15T08:00:00", "duration_h": 0.0 },
@@ -285,48 +334,29 @@ Tries all pairwise permutations within each berth.  A swap is accepted only when
     "improvement_vs_greedy_pct": 8.3,
     "conflicts_resolved": 1,
     "duration_source_breakdown": { "rate_model": 1 },
-    "resource_delays": {
-      "pilot_caused": 0,
-      "tug_caused": 1
-    }
+    "resource_delays": { "pilot_caused": 0, "tug_caused": 1 }
   }
 }
 ```
 
-#### Assignment fields
+#### Operation phases
 
-| Field | Type | Description |
-|---|---|---|
-| `pilot_assigned` | bool | `true` if a pilot was successfully allocated for docking |
-| `tugs_required` | int | Number of tugs required (computed from GT + cargo + bow thruster) |
-| `tugs_assigned` | bool | `true` if all required tugs were allocated |
-| `phases` | list | Four-phase temporal breakdown (see below); empty for unassigned vessels |
-
-##### Operation phases
-
-Each assigned vessel includes a `phases` list with exactly four entries:
+Each assigned vessel includes a `phases` list.  Standard phases:
 
 | Phase name | Description |
 |---|---|
 | `fondeo` | Waiting at anchor — from ETA to `scheduled_start` |
-| `atraque` | Docking manoeuvre — duration from `maneuver_model` or fallback |
-| `ejecucion` | Cargo operation — between end of docking and start of undocking |
-| `desatraque` | Undocking manoeuvre — same duration as docking, ends at `scheduled_end` |
+| `atraque` | Docking manoeuvre |
+| `ejecucion` | Cargo operation |
+| `desatraque` | Undocking manoeuvre |
 
-Each phase object: `{ "name": str, "start": ISO8601, "end": ISO8601, "duration_h": float }`.  Phase timestamps are strictly consecutive (`end[i] == start[i+1]`).  If combined manoeuvre time would leave less than 0.1 h for `ejecucion`, both manoeuvre durations are scaled down proportionally.
+Additional phases inserted by re-planning / early-completion:
 
-| `status` | Meaning |
+| Phase name | Description |
 |---|---|
-| `assigned` | Vessel has a confirmed berth slot |
-| `unassigned` | No compatible slot found (e.g. vessel too long for any berth) |
-| `invalid_berth` | `target_berth` does not exist in the supplied `mooring_zones` |
-
-| `duration_source` | Meaning |
-|---|---|
-| `provided` | User supplied `estimated_duration_h` directly |
-| `rate_model` | Computed from `cantidad / calibrated_rate` |
-| `statistical_model` | Median from historical (operation, cargo, eslora bucket) |
-| `default` | Fallback to `default_duration_h` in config |
+| `delay` | Red segment — visual marker for arrival or operation delay |
+| `waiting_undock` | Light-purple segment — vessel waits at berth for undocking resources |
+| `early_arrival` | Cyan segment — vessel arrived before its ETA |
 
 #### KPI fields
 
@@ -358,14 +388,15 @@ aisstream.io  ──wss──►  _relay_loop() task  ──fan-out──►  An
 
 The relay is a single `asyncio.Task` (`_relay_loop`) that lives for the lifetime of the server process.  It starts automatically when the first Angular client connects to `/ws/ais-stream` and keeps running even if all clients disconnect (so reconnecting is instant).
 
-### Connection lifecycle
+### Bounding-box protocol
 
-1. Angular client opens `ws://localhost:8000/ws/ais-stream`.
-2. Server accepts the WebSocket and adds it to the `_clients` set.
-3. If no relay task is running, `_relay_loop()` is started as an async task.
-4. The relay connects to `wss://stream.aisstream.io/v0/stream`, authenticates with the API key, and subscribes to `PositionReport` messages for the current bounding box.
-5. Every incoming AISStream message is forwarded verbatim to all entries in `_clients`; dead connections are silently removed.
-6. When the client disconnects (`WebSocketDisconnect`), it is removed from `_clients`.
+The frontend sends a `bbox` message to restrict which vessels are streamed.  The relay reconnects to AISStream with the new bounding box after a **1 s debounce**.
+
+```json
+{ "type": "bbox", "bbox": [[[swLat, swLng], [neLat, neLng]]] }
+```
+
+Default bbox covers the Las Palmas port area: `[[[28.06, -15.52], [28.18, -15.36]]]`.
 
 ### Reconnect / backoff
 
@@ -373,59 +404,6 @@ The relay is a single `asyncio.Task` (`_relay_loop`) that lives for the lifetime
 |---|---|
 | AISStream closes connection | Relay reconnects immediately; backoff starts at 2 s and doubles up to 60 s on repeated failures |
 | Backoff reset | On every successful connection, `backoff` resets to 2 s |
-
-### Bounding-box protocol
-
-The frontend sends a `bbox` message to restrict which vessels are streamed.  The relay reconnects to AISStream with the new bounding box after a **1 s debounce** (so rapid map panning triggers only one reconnect).
-
-**Client → server:**
-```json
-{
-  "type": "bbox",
-  "bbox": [[[swLat, swLng], [neLat, neLng]]]
-}
-```
-
-The default bbox covers the Las Palmas port area: `[[[28.06, -15.52], [28.18, -15.36]]]`.
-
-When the frontend receives a `moveend` map event it waits 1 s before sending the new bbox; the backend then closes the active AISStream connection and the relay loop reconnects immediately with the updated subscription.
-
-### Message format forwarded to clients
-
-Only `PositionReport` messages pass through.  The raw JSON from aisstream.io is forwarded unchanged:
-
-```json
-{
-  "MessageType": "PositionReport",
-  "MetaData": {
-    "MMSI": 123456789,
-    "ShipName": "VESSEL NAME    ",
-    "latitude": 28.134,
-    "longitude": -15.425,
-    "time_utc": "2024-01-15 08:00:00"
-  },
-  "Message": {
-    "PositionReport": {
-      "Sog": 2.1,
-      "TrueHeading": 90,
-      "NavigationalStatus": 0
-    }
-  }
-}
-```
-
-The Angular `AisStreamService` parses this and emits a typed `AisVesselPosition` object.  `TrueHeading = 511` is the NMEA "not available" sentinel and is treated as `null`.
-
-### Navigational status colour coding (frontend)
-
-| Status code | Meaning | Map colour |
-|---|---|---|
-| `0` | Under way (engine) | Green `#22c55e` |
-| `1` | At anchor | Yellow `#eab308` |
-| `5` | Moored | Blue `#3b82f6` |
-| other / `null` | — | Grey `#94a3b8` |
-
-Vessel icons are SVG arrow polygons rotated to `TrueHeading` degrees.  Markers older than **10 minutes** without a position update are purged from the map.
 
 ---
 
@@ -469,34 +447,39 @@ portoptim-backend/
 │   │   └── v1/
 │   │       └── routes/
 │   │           ├── transformer.py   POST /api/v1/transform/
-│   │           ├── optimization.py  Legacy placeholder (deprecated)
 │   │           └── ais_stream.py    WebSocket /ws/ais-stream — AISStream.io relay
 │   ├── models/
 │   │   ├── vessel.py                Vessel Pydantic model
 │   │   └── berth_call.py            BerthCall Pydantic model (computed duration_hours)
 │   ├── services/
-│   │   ├── transformer/
-│   │   │   ├── validator.py         Schema validation and column renaming
-│   │   │   ├── cleaner.py           Deduplication, empty rows, whitespace, concurrent-op merge
-│   │   │   ├── normalizer.py        Date parsing, type coercion, vocabulary mapping
-│   │   │   └── transformer_service.py  Pipeline orchestrator (6 stages)
-│   │   └── optimization/
-│   │       └── optimization_service.py  Legacy stub (not used)
+│   │   └── transformer/
+│   │       ├── validator.py         Schema validation and column renaming
+│   │       ├── cleaner.py           Deduplication, empty rows, whitespace, concurrent-op merge
+│   │       ├── normalizer.py        Date parsing, type coercion, vocabulary mapping
+│   │       └── transformer_service.py  Pipeline orchestrator (6 stages)
 │   └── utils/
 │       └── csv_reader.py            CSV/Excel reader with encoding fallback
 ├── optimizer/                       ← Scheduling optimisation engine
 │   ├── __init__.py                  Public exports
-│   ├── models.py                    Pydantic I/O models, AssignmentResult dataclass,
+│   ├── models.py                    Pydantic I/O models (OptimizationRequest/Response,
+│   │                                ReplanRequest/Response, EarlyCompleteRequest/Response,
+│   │                                VesselDelay), AssignmentResult dataclass,
 │   │                                OperationPhase dataclass, build_phases(),
 │   │                                required_tugs() business-rule function
 │   ├── calibration.py               Phase 1: rate_model, duration_model, overlap_factor,
 │   │                                maneuver_model, get_maneuver_duration()
 │   ├── duration.py                  Three-layer duration estimator
-│   ├── scheduler.py                 Phase 2: greedy scheduler, interval-based ResourcePool,
-│   │                                real pilot / tug resource logic
-│   ├── local_search.py              Phase 3: intra-berth swap heuristic
-│   ├── optimizer.py                 Day-by-day orchestrator + KPI computation
-│   └── router.py                    FastAPI router (POST /run, GET /calibration-stats)
+│   ├── scheduler.py                 Phase 2: greedy scheduler, interval-based ResourcePool
+│   │                                (with .copy() for LS branching), pilot/tug resource logic
+│   ├── local_search.py              Phase 3: resource-aware intra-berth swap heuristic;
+│   │                                background pools prevent resource-conflicting swaps
+│   ├── conflict.py                  Conflict detection for re-planning: apply_delays_to_assignments(),
+│   │                                detect_conflicts() (berth / pilot / tug)
+│   ├── optimizer.py                 Day-by-day orchestrator: optimize(), replan(),
+│   │                                early_complete(); KPI computation; visual delay/
+│   │                                early-arrival/waiting_undock phase injection
+│   └── router.py                    FastAPI router (POST /run, /replan, /early_complete,
+│                                    GET /calibration-stats, POST /calibrate)
 └── tests/
     ├── conftest.py
     ├── fixtures/
@@ -509,11 +492,11 @@ portoptim-backend/
         ├── conftest.py
         ├── test_duration.py
         ├── test_scheduler.py
-        ├── test_resources.py        required_tugs() + ResourcePool unit tests
+        ├── test_resources.py
         ├── test_local_search.py
         ├── test_optimizer.py
-        ├── test_maneuver_duration.py  maneuver_model + estimate_maneuver_duration()
-        └── test_phases.py           OperationPhase / build_phases() + end-to-end phases
+        ├── test_maneuver_duration.py
+        └── test_phases.py
 ```
 
 ---

@@ -266,15 +266,15 @@
         <span class="material-symbols-outlined text-base">check_circle</span>
         {{ 'vessel.status.completed' | translate }}
       </div>
-      <!-- On the Way → Confirm Arrival -->
-      <button *ngIf="isOnTheWay"
+      <!-- On the Way → Confirm Arrival (hidden while delay form is open) -->
+      <button *ngIf="isOnTheWay && !showDelayInput"
               type="button"
               (click)="confirm.emit()"
               class="w-full py-md text-label-md bg-blue-600 text-white rounded-lg hover:opacity-90 transition-all shadow-md">
         {{ 'vessel.confirm_arrival' | translate }}
       </button>
-      <!-- In Progress → Confirm Operation -->
-      <button *ngIf="isInProgress"
+      <!-- In Progress → Confirm Operation (hidden while delay form is open) -->
+      <button *ngIf="isInProgress && !showDelayInput"
               type="button"
               (click)="confirm.emit()"
               class="w-full py-md text-label-md bg-on-secondary-container text-white rounded-lg hover:opacity-90 transition-all shadow-md">

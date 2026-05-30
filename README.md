@@ -2,13 +2,13 @@
 
 **Sistema de optimización de atraques portuarios** — Proyecto de Fin de Grado en Ingeniería Informática, Universidad de Las Palmas de Gran Canaria.
 
-PortOptim es una plataforma web full-stack que transforma datos históricos de escalas portuarias en programaciones de atraques optimizadas, integrando seguimiento en tiempo real de embarcaciones mediante AIS.
+PortOptim es una plataforma web full-stack que transforma datos históricos de escalas portuarias en programaciones de atraques optimizadas, con soporte de re-planificación dinámica ante imprevistos y seguimiento en tiempo real de embarcaciones mediante AIS.
 
 ---
 
 ## Descripción general
 
-Los puertos gestionan diariamente la asignación de muelles a embarcaciones que compiten por recursos escasos: norays, prácticos, remolcadores y tiempo. PortOptim automatiza este proceso mediante un motor de optimización en tres fases (calibración estadística → planificación greedy → búsqueda local) que minimiza el tiempo de espera total en fondeo.
+Los puertos gestionan diariamente la asignación de muelles a embarcaciones que compiten por recursos escasos: norays, prácticos, remolcadores y tiempo. PortOptim automatiza este proceso mediante un motor de optimización en tres fases (calibración estadística → planificación greedy → búsqueda local resource-aware) que minimiza el tiempo de espera total en fondeo, y gestiona el ciclo de vida operacional completo de cada escala: demoras en llegada, extensión de operaciones y completado anticipado.
 
 El sistema se ha validado con datos reales correspondientes al periodo **2022–2025** (~13 000 escalas).
 
@@ -19,21 +19,22 @@ El sistema se ha validado con datos reales correspondientes al periodo **2022–
 | Repositorio | Descripción |
 |---|---|
 | [`portoptim`](./portoptim/) | Frontend Angular 19 — interfaz de operaciones |
-| [`portoptim-backend`](./portoptim-backend/) | Backend FastAPI — transformador de datos, motor de optimización y relay AIS |
+| [`portoptim-backend`](./portoptim-backend/) | Backend FastAPI — transformador de datos, motor de optimización, re-planificación dinámica y relay AIS |
 
 ---
 
 ## Arquitectura del sistema
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser                              │
-│                                                             │
-│   Angular 19  ──HTTP──►  FastAPI  ──►  Optimizer engine     │
-│   (Dashboard,           (uvicorn)  ──►  Data transformer    │
-│    Data Input,                                              │
-│    Optimization)  ◄──WebSocket──  AIS relay ◄── aisstream.io│
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                            Browser                                   │
+│                                                                      │
+│   Angular 19  ──HTTP──►  FastAPI  ──►  Optimizer engine              │
+│   (Dashboard,            (uvicorn)      (calibración → greedy → LS)  │
+│    Data Input,                    ──►  Data transformer              │
+│    Optimization,                  ──►  Conflict detector             │
+│    Statistics)  ◄──WebSocket──  AIS relay ◄── aisstream.io           │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 El backend actúa como proxy WebSocket entre [aisstream.io](https://aisstream.io/) y los clientes Angular, de modo que un único slot de API key sirve a todos los usuarios conectados simultáneamente.
@@ -47,22 +48,42 @@ El backend actúa como proxy WebSocket entre [aisstream.io](https://aisstream.io
 - Pipeline de seis etapas: validación de esquema → renombrado → limpieza → normalización → fusión de operaciones concurrentes → modelos Pydantic.
 - Soporte para formatos de fecha inconsistentes, valores nulos y operaciones simultáneas en el mismo atraque.
 
-### Motor de optimización
-- **Fase 1 — Calibración**: aprende modelos estadísticos de duración (tasa t/h, duración mediana, maniobras) a partir de datos históricos.
-- **Fase 2 — Greedy**: asigna muelles por GT descendente con restricciones reales de prácticos y remolcadores; soporta berths continuos (rango de norays) y discretos (slots de capacidad).
-- **Fase 3 — Búsqueda local**: intercambio intra-muelle con criterio de mejora estricta; < 0,1 s para 200 buques / 100 muelles.
-- Estimación de duración en tres capas: duración proporcionada → modelo de tasa → modelo estadístico → valor por defecto.
-- Desglose de fases por escala: fondeo · atraque · ejecución · desatraque.
+### Motor de optimización (3 fases)
+- **Fase 1 — Calibración** (opcional): aprende modelos estadísticos de duración (tasa t/h, duración mediana por tipo de operación/mercancía/eslora, maniobras) a partir de datos históricos.
+- **Fase 2 — Greedy**: asigna muelles por GT descendente con restricciones reales de prácticos y remolcadores. Soporta berths continuos (rango de norays) y discretos (slots de capacidad). Procesa las escalas día a día; los estados de muelle se propagan entre días.
+- **Fase 3 — Búsqueda local resource-aware**: intercambio intra-muelle (hasta 500 iteraciones) evaluando el coste total de berth + recursos mediante **background pools** — pools de pilotos/remolcadores pre-cargados con los compromisos de los demás muelles — para evitar reordenaciones que ahorren tiempo de berth pero generen conflictos de recursos cruzados.
+
+### Re-planificación dinámica
+- **Retraso de llegada** (`arrival`): el optimizador extiende la fase de fondeo; si el buffer no es suficiente, re-optimiza solo los muelles afectados sin tocar el resto.
+- **Retraso de operación** (`operation`): extiende la duración estimada; desencadena re-planificación parcial si desplaza barcos siguientes.
+- **Llegada anticipada** (`early_arrival`): el optimizador intenta adelantar el atraque si el muelle está libre antes de la ETA original.
+- **Detección de conflictos** (`conflict.py`): comprueba solapamientos de berth, excesos de pilotos y excesos de remolcadores en la ventana de maniobra.
+
+### Completado anticipado de operaciones
+- El operador confirma que un buque terminó su carga/descarga antes de la hora programada.
+- El sistema calcula el slot de desatraque más temprano posible respetando la disponibilidad de prácticos y remolcadores, inserta una fase `waiting_undock` (lila) si los recursos no están disponibles, y desplaza hacia adelante la cola de espera del muelle liberado.
 
 ### Dashboard operacional
 - Gantt de 24 h con swim-lanes por muelle, navegación por día y línea «ahora».
+- Indicadores de alerta: ⚠ naranja en operaciones con retraso; ⚓ ámbar en buques en ventana de llegada.
 - Mapa satelital interactivo (Leaflet + Esri) con marcadores AIS en tiempo real coloreados por estado de navegación.
 - KPIs: buques totales, muelles activos, duración media, filas omitidas.
 
 ### Vista de optimización
-- Alternancia automática entre modo histórico y modo optimizador.
-- KPIs comparativos: tiempo total en fondeo, mejora vs. greedy, buques sin resolver, utilización por muelle.
-- Panel lateral de detalle de escala con avance manual de estado operacional (en camino → en progreso → completado).
+- Gantt multi-ventana de **5 días** con navegación por ventana y swim-lanes concurrentes.
+- Visualización de fases por colores: fondeo (ámbar) · atraque (sky) · ejecución (verde) · desatraque (índigo) · `delay` (rojo) · `waiting_undock` (lila) · `early_arrival` (cyan).
+- Panel de re-planificación: aplicar demoras o completado anticipado desde el panel lateral de detalle de escala.
+- KPIs comparativos: tiempo total en fondeo, mejora vs. greedy, buques sin resolver, utilización por muelle, retardos por práctico/remolcador.
+
+### Página de Estadísticas
+- **Pestaña CSV**: análisis del dataset histórico transformado — ocupación por muelle, evolución mensual, distribución por tipo de operación y mercancía, distribución horaria de llegadas.
+- **Pestaña Optimizer**: análisis del resultado de la última optimización — distribución de tiempos de fondeo, análisis de fases (duración media por fase), fondeo por muelle, distribución de fuentes de estimación, **análisis de recursos**: horas de espera por práctico/remolcador, pico simultáneo observado, estimación de FTE mensual.
+- Gráfico de atraques/desatraques por hora con barras superpuestas y tooltip interactivo.
+
+### Sistema de alertas de buques
+- `VesselAlertService` calcula alertas de llegada (`[ETA − 1 h, ETA + 3 h]`) y de salida (`[scheduled_end, scheduled_end + 5 h]`) con refresco cada 60 s.
+- Toasts apilados con auto-dismiss de 6 s y barra de progreso animada.
+- Panel de notificaciones en el topbar con badge de no leídas.
 
 ---
 
@@ -129,18 +150,34 @@ La aplicación estará disponible en `http://localhost:4200`.
 
 ---
 
+## API — Endpoints principales
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/health` | Liveness probe |
+| `POST` | `/api/v1/transform/` | Subir CSV/Excel → `BerthCall[]` transformados |
+| `POST` | `/api/v1/optimize/run` | Ejecutar optimización → assignments + KPIs |
+| `POST` | `/api/v1/optimize/replan` | Re-planificar tras retrasos → schedule actualizado |
+| `POST` | `/api/v1/optimize/early_complete` | Completado anticipado → cascada pull-forward |
+| `GET` | `/api/v1/optimize/calibration-stats` | Estadísticas del modelo de calibración |
+| `POST` | `/api/v1/optimize/calibrate` | Cargar CSV histórico y ajustar modelos |
+| `WebSocket` | `/ws/ais-stream` | Relay AIS en tiempo real |
+
+---
+
 ## Estructura del monorepo
 
 ```
 portoptim-root/
 ├── portoptim/                  Frontend Angular
 │   ├── src/app/
-│   │   ├── core/               Servicios, modelos, i18n (en/es/de/fr)
-│   │   ├── shared/             Layout, Sidebar, Topbar, TranslatePipe
+│   │   ├── core/               Servicios (runner, stores, VesselAlertService), modelos, i18n (en/es/de/fr)
+│   │   ├── shared/             Layout, Sidebar, Topbar (con alertas), OptimizationToast, VesselAlertToast
 │   │   └── features/
-│   │       ├── dashboard/      Gantt + Mapa AIS + KPIs + Alertas
+│   │       ├── dashboard/      Gantt 24 h (con indicadores de alerta) + Mapa AIS + KPIs
 │   │       ├── data-input/     Upload CSV/Excel + configuración del optimizador
-│   │       └── optimization/   Vista dual histórico/optimizador + panel de detalle
+│   │       ├── optimization/   Gantt 5-días + re-planificación + completado anticipado + panel de detalle
+│   │       └── statistics/     Estadísticas CSV + Estadísticas del optimizador (fases, recursos, FTE)
 │   ├── tailwind.config.js
 │   └── README.md
 │
@@ -149,7 +186,13 @@ portoptim-root/
 │   │   ├── api/v1/routes/      Endpoints REST + WebSocket AIS
 │   │   ├── models/             Modelos Pydantic (BerthCall, Vessel)
 │   │   └── services/transformer/  Pipeline de transformación de datos
-│   ├── optimizer/              Motor de optimización (calibración, greedy, búsqueda local)
+│   ├── optimizer/
+│   │   ├── calibration.py      Fase 1: modelos estadísticos de duración y maniobra
+│   │   ├── scheduler.py        Fase 2: greedy con ResourcePool interval-based
+│   │   ├── local_search.py     Fase 3: búsqueda local con background resource pools
+│   │   ├── conflict.py         Detección de conflictos para re-planificación
+│   │   ├── optimizer.py        Orquestador: optimize() · replan() · early_complete()
+│   │   └── router.py           FastAPI router (/run · /replan · /early_complete · /calibrate)
 │   ├── tests/                  85 tests unitarios e integración
 │   └── README.md
 │
@@ -195,7 +238,7 @@ pytest -v
 
 ## Internacionalización
 
-La interfaz está disponible en cuatro idiomas gestionados por un sistema i18n propio (sin el builder de Angular):
+La interfaz está disponible en cuatro idiomas gestionados por un sistema i18n propio (sin el builder de Angular). El selector de idioma está en la barra superior.
 
 | Idioma | Código |
 |---|---|
@@ -203,8 +246,6 @@ La interfaz está disponible en cuatro idiomas gestionados por un sistema i18n p
 | English | `en` |
 | Deutsch | `de` |
 | Français | `fr` |
-
-El selector de idioma se encuentra en la barra superior de la aplicación.
 
 ---
 

@@ -1,6 +1,6 @@
 {
-  "num_pilots": 15,
-  "num_tugs": 15,
+  "num_pilots": 5,
+  "num_tugs": 17,
   "mooring_zones": [
     {
       "berth_id": "26 CANTABRIA PROLONGACIO",
@@ -24,7 +24,7 @@
       "berth_id": "14 QUIMICA 1",
       "bap_type": "discrete",
       "noray_max": null,
-      "capacity": 1
+      "capacity": 2
     },
     {
       "berth_id": "16 QUIMICA 3",
@@ -42,7 +42,7 @@
       "berth_id": "28 PANTALA REPSOL 35-S",
       "bap_type": "discrete",
       "noray_max": null,
-      "capacity": 1
+      "capacity": 2
     },
     {
       "berth_id": "17 QUIMICA 4",
@@ -95,7 +95,7 @@
     {
       "berth_id": "05 ARAGO",
       "bap_type": "continuous",
-      "noray_max": 40,
+      "noray_max": 60,
       "capacity": null
     },
     {
@@ -107,14 +107,14 @@
     {
       "berth_id": "23 ANDALUSIA",
       "bap_type": "continuous",
-      "noray_max": 40,
+      "noray_max": 60,
       "capacity": null
     },
     {
       "berth_id": "21 PANTALA ASESA / P20",
       "bap_type": "discrete",
       "noray_max": null,
-      "capacity": 1
+      "capacity": 2
     },
     {
       "berth_id": "30 PANTALA REPSOL 80-S",

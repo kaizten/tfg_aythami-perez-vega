@@ -1,6 +1,6 @@
-# portoptim — Frontend
+# portoptim — Frontend Angular
 
-Angular web interface for the **PortOptim** maritime berth scheduling system, developed as part of a Final Degree Project (TFG) in Computer Engineering at the Universidad de Las Palmas de Gran Canaria.
+Interfaz de usuario de **PortOptim**, desarrollada con Angular 19 como parte de un TFG en Ingeniería Informática (ULPGC).
 
 ---
 
@@ -35,8 +35,6 @@ A custom design system built for data-heavy, high-pressure maritime operations i
 | Error | `error` | `#ba1a1a` | Validation errors, alert badges |
 | Primary container | `primary-container` | custom | Gantt vessel bars, map badge |
 
-Tokens follow the Material Design 3 colour-role naming convention and are defined as Tailwind `extend.colors` values in `tailwind.config.js`.
-
 ### Typography
 
 **Inter** throughout. Custom Tailwind font-size utilities:
@@ -49,10 +47,6 @@ Tokens follow the Material Design 3 colour-role naming convention and are define
 | `text-body-lg/md/sm` | 18 / 16 / 14 px | 400 |
 | `text-label-md/sm` | 14 / 12 px | 600 |
 | `text-data-mono` | 14 px | 500, monospace |
-
-### Spacing
-
-Custom Tailwind spacing scale: `xs = 4 px`, `sm = 8 px`, `base = 8 px`, `md = 16 px`, `lg = 24 px`, `xl = 32 px`, `gutter = 24 px`.
 
 ### Layout shell
 
@@ -71,7 +65,8 @@ Custom Tailwind spacing scale: `xs = 4 px`, `sm = 8 px`, `base = 8 px`, `md = 16
 AppModule
 ├─ BrowserModule + HttpClientModule + AppRoutingModule
 └─ SharedModule  ──────────────────────────────────────────────────────────┐
-   declares: LayoutComponent, SidebarComponent, TopbarComponent, TranslatePipe
+   declares: LayoutComponent, SidebarComponent, TopbarComponent,
+             OptimizationToastComponent, VesselAlertToastComponent, TranslatePipe
                                                                             │
    ┌───────────────── lazy-loaded feature modules ──────────────────────────┘
    │
@@ -93,17 +88,17 @@ AppModule
        VesselDetailPanelComponent
 ```
 
-All feature routes are **lazy-loaded** (`loadChildren` with dynamic `import()`).  The default route redirects to `/dashboard`.
+All feature routes are **lazy-loaded** (`loadChildren` with dynamic `import()`). The default route redirects to `/dashboard`.
 
 ### Reactive state management
 
-Three singleton stores (no NgRx — plain RxJS `BehaviorSubject`s) share state across pages:
+Singleton stores (plain RxJS `BehaviorSubject`s) share state across pages without NgRx:
 
 | Service | Type | Purpose |
 |---|---|---|
 | `TransformationStoreService` | `BehaviorSubject<TransformApiResponse \| null>` | Last successful data transformation result |
 | `OptimizationParamsStoreService` | `BehaviorSubject<OptimizationParams \| null>` | User-entered pilots / tugs / mooring zone config |
-| `OptimizationResultStoreService` | `BehaviorSubject<OptimizationApiResult \| null>` | Last optimizer run result |
+| `OptimizationResultStoreService` | `BehaviorSubject<OptimizationApiResult \| null>` | Last optimizer run result (shared by Optimization, Statistics, VesselAlertService) |
 
 All services use `@Injectable({ providedIn: 'root' })`.
 
@@ -139,57 +134,19 @@ All metrics show `—` when no dataset is loaded.
 | Historical | Transform loaded, no optimizer result | `TransformationStoreService` | Solid coloured block per `call_id` hash |
 | Optimizer | After optimizer run (`isOptimizerMode = true`) | `OptimizationResultStoreService` | Phase-coloured segments (atraque / ejecucion / desatraque) |
 
-- **Day navigation**: collects every calendar day spanned by any vessel (arrival → departure for historical; scheduled_start → scheduled_end for optimizer), displays them as a navigable list. Defaults to today if the dataset contains today; otherwise defaults to the last available day (optimizer: first available day).
-- **Navigation bar** (top-right):
-  - *Viewing today*: `[PREVIOUS DAY]` · `[TODAY]` · `[NEXT DAY]`
-  - *Not on today*: `[Go to Today]` · `[PREVIOUS DAY]` · *(date label)* · `[NEXT DAY]`
-  - Navigation buttons disabled at the boundaries of the available date range.
-- **Swim-lane algorithm** (`assignLanes`): earliest-free-lane assignment; `LANE_PX = 44 px` per lane. Vessels that span multiple days are included in every day they overlap.
-- **Clip indicators**: vessels that start before midnight get a `keyboard_double_arrow_left` icon; vessels that end after midnight get `keyboard_double_arrow_right`. Corner rounding adapts accordingly (`rounded-l-lg`, `rounded-r-lg`, `rounded-none`).
-- **Historical mode colours**: vessel colour is derived from a hash of `call_id` → 6-colour palette (teal, indigo, amber, violet, sky, rose).
-- **Optimizer mode phase segments**: each vessel block is split into coloured bands — sky (atraque) / emerald (ejecucion) / violet (desatraque). Fondeo is not shown in the Gantt (only in the detail panel). Phase widths are clipped individually to the 24-hour window when a vessel spans midnight.
-- **Optimizer mode badge**: a teal pill badge labelled *Optimizador* appears next to the title when showing optimizer results.
-- **Phase legend**: shows atraque / ejecucion / desatraque colour swatches at the bottom of the component, plus a note that fondeo is visible in the detail panel only. Only visible in optimizer mode.
-- **"Now" line**: a green vertical line (`bg-green-500`) shows the current time of day. Computed using `calc(ratio × 100% + (1 − ratio) × 7rem)` to align correctly with the label column width. Updates every **60 seconds** via `interval(60_000).pipe(startWith(0))`. Only rendered when the selected day is today (`isToday`).
-- **Scrollable rows**: `max-h-[480px] overflow-y-auto` so the time axis header stays fixed while many berths scroll.
+- **Day navigation**: collects every calendar day spanned by any vessel; displays them as a navigable list. Defaults to today if the dataset contains today; otherwise defaults to the last / first available day.
+- **Swim-lane algorithm** (`assignLanes`): earliest-free-lane assignment; `LANE_PX = 44 px` per lane.
+- **Clip indicators**: vessels that span midnight get directional arrow icons + rounded-corner adaptation.
+- **Warning indicators**: in optimizer mode, vessels whose `scheduled_end` has passed but are still listed show an orange ⚠ icon (operation overrun); vessels whose ETA is within [−1 h, +3 h] of now show an amber anchor icon (approaching/arrived).
+- **"Now" line**: green vertical line updated every 60 seconds. Only rendered when the selected day is today.
 
 #### Terminal Map (`TerminalMapComponent`)
 
-Interactive satellite map powered by **Leaflet**, showing live vessel positions from the AIS relay.
-
-**Map layers**:
-- Base: Esri World Imagery (satellite tiles)
-- Overlay: CartoDB light-only labels (custom pane, `zIndex 450`, pointer-events none)
-
-**AIS vessel markers**:
-- SVG arrow polygon icon rotated to `TrueHeading` (degrees); 511 = "not available" → no rotation.
-- Colour by `NavigationalStatus`:
-
-  | Status | Meaning | Colour |
-  |---|---|---|
-  | 0, 8 | Under way | Green `#22c55e` |
-  | 1 | At anchor | Yellow `#eab308` |
-  | 5 | Moored | Blue `#3b82f6` |
-  | other / null | — | Grey `#94a3b8` |
-
-- Marker popup shows: ship name, MMSI, SOG (kn), heading (°), navigational status.
-- **Position buffering**: positions are buffered in a `Map<mmsi, AisVesselPosition>`; first flush after 3 s, then every 20 s, to batch Leaflet DOM operations.
-- **Stale purge**: markers not updated in the last **10 minutes** are removed (`STALE_MS = 600_000`).
-- **Out-of-bounds removal**: vessels outside the current map bounds are removed on every `moveend`.
-
-**Bbox filtering**:
-- On `moveend`, the map bounds are sent to the backend after a **1-second debounce** (`bboxSubject.pipe(debounceTime(1000))`).
-- A 4-second single-shot flush follows so new-area vessels appear promptly after panning.
-
-**Port search** (Nominatim geocoding):
-- Autocomplete dropdown with **350 ms debounce** on keystrokes; shows up to 5 results.
-- `Enter` key selects the top suggestion or falls back to a direct geocode search.
-- `map.flyTo()` animates to the chosen location at zoom 14.
-- "Not found" indicator auto-dismisses after 3 s.
+Interactive satellite map (Leaflet + Esri World Imagery + CartoDB labels) showing live AIS vessel positions. Markers are colour-coded by navigational status, rotate to `TrueHeading`, and auto-purge after 10 minutes without a position update.
 
 #### Action Alerts (`ActionAlertsComponent`)
 
-Static UI panel showing prioritised operational alerts (critical / info / notice). Placeholder content.
+Static UI panel showing prioritised operational alerts. Placeholder content.
 
 ---
 
@@ -197,119 +154,50 @@ Static UI panel showing prioritised operational alerts (critical / info / notice
 
 Single-page form for uploading raw port data and configuring optimizer parameters.
 
-#### File upload
-
-- Drag-and-drop zone or file picker; accepts `.csv` and `.xlsx` (max 50 MB).
-- Calls `PortOptimApiService.transformFile()` (multipart POST to `/api/v1/transform/`).
-- Shows a spinner during upload; displays server error messages on failure.
-
-#### Transformed preview table
-
-Displays the first **10 valid rows** after a successful transform. Columns:
-
-`Call ID` · `Berth` · `Berthing` · `Unberthing` · `LOA (m)` · `GT` · `Op. Type` · `Cargo Group` · `Quantity` · `Duration (h)`
-
-#### Transformation Summary card
-
-| Field | Source |
-|---|---|
-| Total input rows | `transformation_summary.total_input_rows` |
-| Valid records | `transformation_summary.valid_rows` |
-| Skipped rows | `transformation_summary.skipped_rows` |
-| Berths | count of unique `berth_id` values |
-| Skip reasons | `transformation_summary.skipped_reasons[]` (collapsible list) |
-
-"Proceed to Optimization" button navigates to `/optimization` and persists params via `OptimizationParamsStoreService`.
-
-#### Optimization Parameters panel
-
-Collects the configuration required by the optimizer:
-
-| Field | Type | Validation |
-|---|---|---|
-| No. of Pilots | number input | required, ≥ 1 |
-| No. of Tugs | number input | required, ≥ 1 |
-| Berths (mooring zones) | dynamic card list | auto-populated from unique berth IDs |
-
-Each berth card has a **BAP type toggle** (`Continuous` / `Discrete`):
-- **Continuous**: requires `noray_max` (integer ≥ 1) — contiguous noray range.
-- **Discrete**: requires `capacity` (integer ≥ 1) — number of discrete slots.
-
-A validation error banner lists all incomplete fields and prevents navigation until resolved.
-
-#### Berth search
-
-A live search field above the mooring-zone list filters berths by name. The underlying data is never removed — search only affects which cards are displayed. The field is reset automatically when a new CSV is uploaded.
-
-#### Config persistence
-
-Parameters are automatically saved to and restored from `localStorage` keyed by the sorted list of berth IDs. Behaviour:
-
-| Event | Action |
-|---|---|
-| New CSV with matching berths | Yellow "saved config" banner offers to restore the saved values |
-| "Apply" clicked on banner | Pilots, tugs, and matching zone configs are overwritten |
-| "Dismiss" clicked | Banner hidden; existing inputs unchanged |
-| CSV berths | Cannot be deleted from the list; only manually-added extra berths can be removed |
-| Export config | Downloads current params as a timestamped `.json` file |
-| Import config | Reads a previously exported `.json`; only fields present in the file are applied |
+- Drag-and-drop or file-picker upload (`.csv` / `.xlsx`, max 50 MB) → multipart POST to `/api/v1/transform/`.
+- Transformed preview table (first 10 valid rows).
+- Transformation Summary card: total rows, valid records, skipped rows, skip reasons.
+- Optimization Parameters panel: nº pilots, nº tugs, berth mooring-zone definitions (continuous with `noray_max` / discrete with `capacity`).
+- Berth live search filter, localStorage config persistence, import/export JSON config.
 
 ---
 
 ### 3. Statistics (`/statistics`)
 
-In-depth statistical analysis of the loaded vessel data and — when an optimizer run has been completed — the proposed schedule.
+In-depth statistical analysis in two independent tabs.
 
-#### Data-source toggle
+#### Tab toggle
 
-A segmented control in the page header switches between two views (the toggle is only shown once an optimizer result is available):
+A segmented control switches between **CSV** (historical transform data) and **Optimizer** (last optimizer run). The toggle is only shown once an optimizer result is available.
 
-| Mode | Data source |
-|---|---|
-| **CSV** | `TransformationStoreService` — raw transformed records |
-| **Optimizer** | `OptimizationResultStoreService` — assignments from the last optimizer run |
-
----
-
-#### CSV view
+#### CSV tab
 
 | Chart | Description |
 |---|---|
-| **KPI cards** | Total vessels · Unique berths · Avg. stay duration (`hh:mm`) · Date range |
-| **Avg. Stay Duration + Cargo Volume by Month** | Dual horizontal-bar chart in a shared **6-month window** (prev/next navigation). Left: avg `duration_hours` per month. Right: total `quantity` per month. |
-| **Monthly detail panel** | Navigate month by month. Three columns: Berth Occupancy (% of available hours per berth), Operation Types (count per type), Cargo Groups (count per group). Scrollable when more than ~6 items. |
-| **Arrival Distribution** | 24-column vertical bar chart of vessel arrivals by hour of day. |
+| **KPI cards** | Total vessels · Unique berths · Avg. stay (`hh:mm`) · Date range |
+| **Avg. Duration + Cargo Volume by Month** | Dual horizontal-bar chart in a 6-month window with prev/next navigation |
+| **Monthly detail panel** | Berth Occupancy · Operation Type breakdown · Cargo Group breakdown |
+| **Arrival Distribution** | 24-bucket vertical bar chart of vessel arrivals by hour of day |
 
----
+#### Optimizer tab
 
-#### Optimizer view
-
-Mirrors the CSV view for the first three charts, then adds eight optimizer-specific panels.
-
-##### Shared charts (mirroring CSV)
-
-| Chart | Differences vs. CSV |
-|---|---|
-| **KPI cards** | Assigned/total vessels · Avg. total stay = sum of all phases (fondeo + atraque + ejecucion + desatraque) · Improvement vs. greedy % |
-| **Avg. Stay Duration + Cargo Volume by Month** | Month grouping uses `scheduled_start`; duration sums all phases; hours displayed as `hh:mm` |
-| **Monthly detail panel** | Same 3-column layout; berth occupancy uses `scheduled_start`/`scheduled_end` |
-
-##### Optimizer-specific charts
+Mirrors the CSV charts for the first three, then adds optimizer-specific panels:
 
 | Chart | Description |
 |---|---|
-| **Docking & Undocking Distribution** | 24-column chart with two **overlapping** bars per hour slot — sky blue (atraque phase starts) and violet (desatraque phase starts, 80 % opacity). Desatraque start is computed as `scheduled_start + atraque_h + ejecucion_h`. Custom styled tooltip (appears on hover) shows the hour range and count per phase. Footer shows **peak hour** per phase. |
-| **Operation Phases** | Horizontal bars for each phase (fondeo / atraque / ejecucion / desatraque) showing total hours and average per vessel (`hh:mm`). |
-| **Anchorage by Berth** | Total and average fondeo hours aggregated per berth, sorted by total descending. Scrollable. |
-| **Waiting Time Distribution** | 5-bucket vertical bar chart: 0 h / 0–10 h / 10–20 h / 20–30 h / >30 h. Footer shows global avg waiting time in `hh:mm`. |
-| **Duration Sources** | Horizontal bars showing count + % per estimation method (`provided`, `rate_model`, `statistical_model`, `default`). |
-| **Resource Allocation by Month** | FTE-based staffing chart with its own **6-month window** navigation. Two parts: <br>① **Yearly peak summary** — one chip per year showing the maximum monthly FTE for pilots and tugs (= the headcount needed to cover the busiest month of each year). <br>② **Monthly horizontal bars** — per month: pilots FTE (teal) and tugs FTE (sky blue). <br>**FTE formula**: `ceil( Σ [ceil(atraque_h) + ceil(desatraque_h)] / available_h )` where `available_h = 48 × (days_in_month / 7)` (8 h/day, 48 h/week). Only the docking and undocking phases count; each phase duration is rounded up to the nearest full hour before summing. |
+| **KPI cards** | Assigned vessels · Avg. total stay (all phases) · Improvement vs. greedy % |
+| **Docking & Undocking Distribution** | 24-column chart with two overlapping bars per hour (sky = atraque starts, violet = desatraque starts). Custom hover tooltip; footer shows peak hour per phase. |
+| **Operation Phases** | Horizontal bars for fondeo / atraque / ejecucion / desatraque with total + avg hours |
+| **Anchorage by Berth** | Total + avg fondeo hours per berth, sorted by total descending |
+| **Waiting Time Distribution** | 5-bucket vertical bar chart (0 h / 0–10 h / 10–20 h / 20–30 h / >30 h) |
+| **Duration Sources** | Horizontal bars per estimation method (`provided` / `rate_model` / `statistical_model` / `default`) |
+| **Resource Allocation by Month** | FTE-based pilot + tug staffing in a 6-month window. **FTE formula**: `ceil( Σ [ceil(atraque_h) + ceil(desatraque_h)] / available_h )` where `available_h = 48 × (days_in_month / 7)`. Yearly peak chips show the busiest month's headcount. Also shows peak simultaneous usage and resource-induced wait hours (`pilot_wait_h`, `tug_wait_h`). |
 
 ---
 
 ### 4. Optimization (`/optimization`)
 
-Dual-mode page: **Historical view** (raw transform data) and **Optimizer view** (proposed schedule).
+Dual-mode page with a 5-day multi-window Gantt and full dynamic re-planning capabilities.
 
 #### Mode switching
 
@@ -322,84 +210,64 @@ Dual-mode page: **Historical view** (raw transform data) and **Optimizer view** 
 
 #### KPI cards
 
-**Historical mode:**
-
-| Card | Value |
-|---|---|
-| Vessels | total `BerthCall` records |
-| Berths | unique `berth_id` count |
-| Avg. Duration | mean `duration_hours` |
-| Skipped | `skipped_rows` from summary |
+**Historical mode:** Vessels · Berths · Avg. Duration · Skipped.
 
 **Optimizer mode:**
 
 | Card | Value | Positive condition |
 |---|---|---|
-| Total Anchorage | sum of `fondeo.duration_h` across all assigned vessels (fallback: `waiting_time_h`) | < 1 h |
+| Total Anchorage | sum of `fondeo.duration_h` across all assigned vessels | < 1 h |
 | Avg. Anchorage | mean `fondeo.duration_h` per assigned vessel | < 1 h |
 | Improvement vs. Greedy | `improvement_vs_greedy_pct` % | ≥ 0 % |
 | Unresolved Vessels | `unresolved_vessels` count | = 0 |
 
-#### Optimizer extras (shown only in Optimizer mode)
+Additional optimizer panels: Berth Utilization bars, Duration Source Breakdown pills, Conflicts Resolved count, resource delay counts (`pilot_caused` / `tug_caused`).
 
-- **Berth Utilization**: horizontal percentage bars per berth, sorted descending, scrollable.
-- **Duration Source Breakdown**: pill badges showing count per estimation method (`provided`, `rate_model`, `statistical_model`, `default`).
-- **Conflicts Resolved**: single count from `kpis.conflicts_resolved`.
+#### Gantt — multi-window (5-day)
 
-#### Gantt chart
+The Gantt shows **5 days per window**; navigation moves forward or back 5 days at a time. The time axis shows day labels rather than hours.
 
-Per-day navigation (one calendar day at a time). Days are derived from the date range spanned by the vessels in the current mode.
+- **Swim-lane system**: `assignLanes()` algorithm, `LANE_PX = 44 px`, supports concurrent vessels within the same berth.
+- **Clip indicators**: arrow icons + rounded-corner adaptation for vessels that start before or end after the window.
+- **Phase segment rendering** (optimizer mode):
+  - `fondeo` — shown as a semi-transparent amber ⚓ bubble with duration
+  - `atraque` — sky-blue segment
+  - `ejecucion` — emerald-green segment
+  - `desatraque` — indigo segment
+  - `delay` — red segment (arrival or operation delay visual marker)
+  - `waiting_undock` — light-purple segment (vessel waiting at berth for undocking resources)
+  - `early_arrival` — cyan segment (vessel arrived before ETA)
+- **Warning icons**: orange ⚠ on vessels whose `scheduled_end` has passed (operation overrun); amber ⚓ on vessels within [ETA − 1 h, ETA + 3 h] (approaching / arrived).
+- **Click handler**: opens `VesselDetailPanelComponent`.
 
-- **Time axis**: 12 hour labels from `00:00` to `22:00`, `flex-1` columns across the full-day width.
-- **Navigation bar**: date label, prev/next buttons (disabled at boundaries), vessel count and position indicator.
-- **Swim-lane system**: same `assignLanes()` algorithm as the dashboard, `LANE_PX = 44 px`.
-- **Clip indicator**: `keyboard_double_arrow_right` / `keyboard_double_arrow_left` icons + rounded corner adaption for vessels that start before or end after the selected day.
-- **Vessel block rendering**:
-  - *Historical mode*: solid coloured block; colour from 6-colour palette by insertion order.
-  - *Optimizer mode — with phases*: `flex` row of coloured bands (sky / emerald / violet for atraque / ejecucion / desatraque); an absolute text overlay shows the vessel name (`phase-label` CSS class for text-shadow) plus a semi-transparent `⚓ X.Xh` fondeo badge (amber anchor icon + duration) aligned right.
-  - *Optimizer mode — unassigned*: solid `bg-red-400/70` block, no fondeo badge.
-- **Phase legend**: below the Gantt in optimizer mode — atraque / ejecucion / desatraque colour swatches + hint text explaining that `⚓` is the anchorage waiting time before docking.
-- **Click handler**: opens `VesselDetailPanelComponent` as a slide-over panel (different data fields depending on mode).
+#### Dynamic re-planning
+
+Applies a delay to one vessel and calls `POST /api/v1/optimize/replan`.
+
+Three delay types are supported:
+
+| Type | Effect |
+|---|---|
+| `arrival` | Vessel delayed at sea; ETA pushed forward. If the fondeo buffer absorbs the delay, no berths are re-optimised. |
+| `operation` | Cargo operation is running long; `estimated_duration_h` extended. Cascade re-plan if it displaces following vessels. |
+| `early_arrival` | Vessel arrived before ETA; the optimizer attempts to dock it sooner. |
+
+Accumulated delays are stored per vessel and sent as totals on each `/replan` call. After each successful re-plan, the base assignments snapshot is updated so subsequent calls compose on top of the latest schedule. A `replan_triggered` flag from the response shows whether a full partial re-optimisation ran or the fondeo buffer was sufficient.
+
+#### Early cargo-operation completion
+
+Calls `POST /api/v1/optimize/early_complete` when a vessel finishes its operation before the scheduled end time.
+
+- Truncates `ejecucion` at the confirmed completion time.
+- Checks pilot and tug availability for immediate undocking; inserts a `waiting_undock` phase (light purple) if resources are busy.
+- Cascades a pull-forward for any vessel waiting in fondeo for the freed berth.
+- Returns `waiting_undock_h` and `berth_freed_delta_h` for display in the detail panel.
 
 #### Vessel Detail Panel (`VesselDetailPanelComponent`)
 
 Slide-over panel (500 px wide, fixed right, `z-50`) triggered by clicking a Gantt vessel block.
 
-**Always shown:**
-- Vessel name, IMO-style sub-label, status chip, priority chip.
-- Vessel details: type, LOA (m), GT, operation type.
-- Assigned berth block with ETA / ETD.
-- Cargo list (icon, type, quantity, unit).
-
-**Optimizer mode only** (when `optimizerStatus` is set):
-
-*Operation phases section* (shown when `phases` array is non-empty):
-
-| Element | Description |
-|---|---|
-| Phase colour bar | Proportional `flex` bar across the full width — fondeo (amber) / atraque (sky) / ejecucion (emerald) / desatraque (violet). Each segment's `flex` value equals its `duration_h`. |
-| Per-phase grid | 2-column grid: colour swatch + translated phase name, duration in hours, start → end timestamps formatted as `dd MMM HH:mm`. |
-
-*Optimizer schedule section:*
-
-| Field | Description |
-|---|---|
-| Waiting Time | `waiting_time_h` formatted to 2 dp; green if 0, amber otherwise |
-| Est. Duration | `duration_estimated_h` in hours |
-| Duration Source | `rate_model` → "Rate model", `statistical_model` → "Statistical", etc. |
-| Berth Status | Assignment status from the optimizer — `assigned` (teal) / `unassigned` (amber) / `invalid_berth` (red). Never changes. |
-| Pilot | Check / cancel icon based on `pilot_assigned` |
-| Tugs | `do_not_disturb_on` if 0 required; check / cancel icon + count if > 0 |
-
-*Footer action button* (only visible in optimizer mode):
-
-| Operational status | Button shown | Result on click |
-|---|---|---|
-| `on_the_way` | *Confirm Arrival* (blue) | Status → `in_progress` |
-| `in_progress` | *Confirm Operation* (teal) | Status → `completed` |
-| `completed` | Green ✓ *Operation Completed* (no button) | — |
-
-The operational status is derived from `scheduled_start` vs. the current time and can be manually advanced via the button. Overrides are stored in a `Map<vessel_id, status>` in `OptimizationComponent` and survive panel re-opens; they are cleared when the optimizer is reset.
+Shows vessel metadata, assigned berth, cargo list, and — in optimizer mode — full phase breakdown with a proportional phase colour bar. Footer action buttons advance the operational status: `on_the_way → in_progress → completed`, plus a **Delay** button that opens the delay form and an **Early Complete** button.
 
 ---
 
@@ -411,137 +279,82 @@ The operational status is derived from `scheduled_start` vs. the current time an
 |---|---|---|---|
 | `transformFile(file)` | `POST` | `/api/v1/transform/` | Multipart upload → `TransformApiResponse` |
 | `runOptimization(req)` | `POST` | `/api/v1/optimize/run` | Schedule optimizer → `OptimizationApiResult` |
+| `replan(req)` | `POST` | `/api/v1/optimize/replan` | Re-plan after delays → `ReplanResponse` |
+| `earlyComplete(req)` | `POST` | `/api/v1/optimize/early_complete` | Early completion → `EarlyCompleteResponse` |
 
-Base URL: `http://localhost:8000`. Error responses extract `detail` from the server JSON body.
+Base URL: `http://localhost:8000`.
+
+### `OptimizationRunnerService`
+
+Owns the optimizer API lifecycle so it survives Angular component navigation. Key methods:
+
+| Method | Description |
+|---|---|
+| `run()` | Calls `/run`, updates result store, shows toast notification |
+| `applyDelay(vesselId, delayH, type)` | Accumulates delay and calls `/replan` |
+| `confirmEarlyComplete(vesselId, completeTime)` | Calls `/early_complete` and updates base snapshot |
+| `resetDelays()` | Clears accumulated delays on optimizer reset |
+
+Exposes `isRunning$`, `isReplanning$`, `showNotification$`, `showReplanNotification$` streams.
+
+### `VesselAlertService`
+
+Singleton that watches the optimization result and computes time-based vessel alerts. Refreshes every 60 seconds and whenever a new result is loaded.
+
+| Alert type | Active window | Trigger |
+|---|---|---|
+| `arrival` | `[ETA − 1 h, ETA + 3 h]` | Vessel is approaching or has recently arrived |
+| `departure` | `[scheduled_end, scheduled_end + 5 h]` | Operation should have ended but vessel is still at berth |
+
+New alerts are emitted once via `newAlert$` so `VesselAlertToastComponent` can present them. Exposes `alerts$`, `unreadCount$`, `hasUnread$`, `markAllRead()`, `dismiss(id)`.
 
 ### `AisStreamService`
 
-Manages the WebSocket connection to the backend AIS relay at `ws://localhost:8000/ws/ais-stream`.
-
-| Member | Type | Description |
-|---|---|---|
-| `positions$` | `Observable<AisVesselPosition>` | Emits each parsed PositionReport |
-| `status$` | `Observable<'live' \| 'reconnecting'>` | Connection state |
-| `connect()` | — | Open socket; auto-reconnects on close (exponential backoff, max 30 s) |
-| `disconnect()` | — | Close socket, cancel pending reconnect |
-| `sendBbox(sw, ne)` | — | Send `{type:'bbox', bbox:[[[swLat,swLng],[neLat,neLng]]]}` to filter area |
-
-`AisVesselPosition` fields: `mmsi`, `shipName`, `latitude`, `longitude`, `sog`, `heading` (null if 511), `navStatus`, `timeUtc`.
-
-### `LanguageService`
-
-Client-side i18n. Backed by `BehaviorSubject<LangCode>`.
-
-| Member | Description |
-|---|---|
-| `lang$` | Observable language code changes |
-| `current` | Getter — current `LangCode` |
-| `set(lang)` | Switch language; all `translate` pipes update automatically |
-| `t(key)` | Translate a key to the current language; returns the key itself if not found |
+WebSocket client for the AIS relay at `ws://localhost:8000/ws/ais-stream`. Auto-reconnects with exponential backoff (max 30 s). Sends `bbox` messages to filter area.
 
 ### Store services
 
-All three follow the same `BehaviorSubject` pattern:
-
 | Service | Stored type | Used by |
 |---|---|---|
-| `TransformationStoreService` | `TransformApiResponse \| null` | Dashboard, DataInput, Optimization |
+| `TransformationStoreService` | `TransformApiResponse \| null` | Dashboard, DataInput, Optimization, Statistics |
 | `OptimizationParamsStoreService` | `OptimizationParams \| null` | DataInput, Optimization |
-| `OptimizationResultStoreService` | `OptimizationApiResult \| null` | **Dashboard**, Optimization |
+| `OptimizationResultStoreService` | `OptimizationApiResult \| null` | Dashboard, Optimization, Statistics, VesselAlertService |
 
-Each exposes `result$` (Observable), `snapshot` (getter), `set()`, and `clear()`.
+---
+
+## Shared components
+
+### `TopbarComponent`
+
+Barra superior con:
+- Nombre de la ruta activa.
+- Selector de idioma (dropdown, 4 idiomas).
+- Badge de alertas no leídas (número sobre icono de campana).
+- Panel de notificaciones desplegable con lista de alertas activas, opción de marcar todas como leídas y dismiss individual.
+
+### `VesselAlertToastComponent`
+
+Stack de toasts apilados verticalmente (nuevas al fondo). Cada toast:
+- Muestra tipo de alerta (llegada / salida), ID del buque y ventana de expiración.
+- Se auto-descarta en 6 s con barra de progreso animada.
+- Tiene botón de cierre manual con animación de slide-out.
+- Simultaneous alerts are all visible at once (one entry per alert).
+
+### `OptimizationToastComponent`
+
+Toast flotante que aparece cuando una optimización o re-planificación finaliza fuera de la página `/optimization`.
+
+### `LayoutComponent`
+
+Shell principal: sidebar fijo + topbar + `<router-outlet>` + `<app-vessel-alert-toast>` + `<app-optimization-toast>`.
 
 ---
 
 ## API models (`core/models/api.models.ts`)
 
-### Data transformation
+### Optimization output (updated)
 
 ```typescript
-interface BerthCall {
-  call_id: string;
-  berth_id: string;
-  arrival_time: string;        // ISO 8601
-  departure_time: string;      // ISO 8601
-  vessel_length: number;       // metres
-  vessel_gt: number;
-  operation_type: string;
-  cargo_group: string;
-  cargo_nature: string;
-  quantity: number | null;
-  duration_hours: number;
-  noray_start: number | null;
-  noray_end: number | null;
-}
-
-interface TransformationSummary {
-  total_input_rows: number;
-  valid_rows: number;
-  skipped_rows: number;
-  skipped_reasons: string[];
-}
-
-interface TransformApiResponse {
-  transformation_summary: TransformationSummary;
-  available_ports: string[];
-  data: BerthCall[];
-}
-```
-
-### Optimization input
-
-```typescript
-type BapType = 'continuous' | 'discrete';
-
-interface MooringZoneConfig {
-  berth_id: string;
-  bap_type: BapType;
-  noray_max?: number;   // continuous only
-  capacity?: number;    // discrete only
-}
-
-interface VesselOperationInput {
-  tipo_operacion: string;
-  grupo_mercancia: string;
-  cantidad: number | null;
-}
-
-interface VesselInput {
-  id: string;
-  eta: string;
-  eslora: number;
-  gt: number;
-  target_berth: string;
-  operations: VesselOperationInput[];
-  estimated_duration_h: number | null;
-}
-
-interface OptimizationApiRequest {
-  vessels: VesselInput[];
-  config: {
-    num_pilots: number;
-    num_tugs: number;
-    default_duration_h: number;
-    overlap_factor: number;
-    mooring_zones: MooringZoneConfig[];
-  };
-}
-```
-
-### Optimization output
-
-```typescript
-type AssignmentStatus = 'assigned' | 'unassigned' | 'invalid_berth';
-type DurationSource   = 'provided' | 'rate_model' | 'statistical_model' | 'default';
-type PhaseName        = 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque';
-
-interface OperationPhase {
-  name: PhaseName;
-  start: string;       // ISO 8601
-  end: string;         // ISO 8601
-  duration_h: number;
-}
-
 interface OptimizationAssignment {
   vessel_id: string;
   berth_id: string;
@@ -556,24 +369,73 @@ interface OptimizationAssignment {
   tugs_required: number;
   tugs_assigned: boolean;
   status: AssignmentStatus;
+  pilot_caused_delay: boolean;
+  tug_caused_delay: boolean;
+  pilot_wait_h: number;          // fondeo hours attributable to pilot unavailability
+  tug_wait_h: number;            // fondeo hours attributable to tug unavailability
   caused_delay_to: string[];
-  phases: OperationPhase[];   // empty for unassigned vessels
+  delay_h?: number;              // total delay applied (from /replan); drives red segment
+  early_arrival_h?: number;      // hours arrived early (from /replan early_arrival)
+  phases: OperationPhase[];
 }
 
-interface OptimizationKpis {
-  total_waiting_time_h: number;
-  avg_waiting_time_h: number;
-  berth_utilization: Record<string, number>;
-  unresolved_vessels: number;
-  improvement_vs_greedy_pct: number;
-  conflicts_resolved: number;
-  duration_source_breakdown: Record<DurationSource, number>;
-  resource_delays: { pilot_caused: number; tug_caused: number };
+// Phase names include standard + dynamic re-planning phases:
+type PhaseName =
+  | 'fondeo' | 'atraque' | 'ejecucion' | 'desatraque'  // standard
+  | 'delay'                                              // arrival or operation delay (red)
+  | 'waiting_undock'                                     // waiting at berth for undock resources (light purple)
+  | 'early_arrival';                                     // arrived before ETA (cyan)
+```
+
+### Re-planning models
+
+```typescript
+interface VesselDelay {
+  vessel_id: string;
+  delay_h: number;
+  delay_type: 'arrival' | 'operation' | 'early_arrival';
 }
 
-interface OptimizationApiResult {
+interface ReplanRequest {
+  base_assignments: OptimizationAssignment[];
+  delays: VesselDelay[];
+  config: OptimizationConfig;
+  vessels: VesselInput[];
+}
+
+interface ReplanResponse {
   assignments: OptimizationAssignment[];
   kpis: OptimizationKpis;
+  replan_triggered: boolean;
+  vessels_affected: string[];
+  conflicts_found: number;
+  delay_map: Record<string, number>;
+}
+```
+
+### Early-completion models
+
+```typescript
+interface EarlyCompleteRequest {
+  vessel_id: string;
+  complete_time: string;          // ISO 8601 wall-clock time (no 'Z')
+  base_assignments: OptimizationAssignment[];
+  config: OptimizationConfig;
+  vessels: VesselInput[];
+}
+
+interface EarlyCompleteResponse {
+  assignments: OptimizationAssignment[];
+  kpis: OptimizationKpis;
+  replan_triggered: boolean;
+  waiting_undock_h: number;
+  berth_freed_delta_h: number;
+}
+
+export interface EarlyCompleteInfo {
+  waitingUndockH:   number;
+  replanTriggered:  boolean;
+  berthFreedDeltaH: number;
 }
 ```
 
@@ -581,7 +443,7 @@ interface OptimizationApiResult {
 
 ## Internationalisation
 
-Custom client-side system — no Angular i18n builder.
+Custom client-side system — no Angular i18n builder. `translations.ts` exports ~210 keys per language (~840 translations total) including new keys for: `notif.*` (alert types and reasons), `opt.phase.*` (dynamic phase names), `stats.*` (Statistics page charts).
 
 | Language | Code |
 |---|---|
@@ -590,14 +452,62 @@ Custom client-side system — no Angular i18n builder.
 | Deutsch | `de` |
 | Français | `fr` |
 
-**How it works:**
+`TranslatePipe` (`pure: false`) calls `LanguageService.t(key)` on every change-detection cycle for instant UI updates on language switch.
 
-- `translations.ts` exports a `Record<LangCode, Record<string, string>>` with ~210 keys per language (~840 translations total).
-- Keys use dot notation grouped by feature: `topbar.*`, `sidebar.*`, `nav.*`, `di.*`, `dash.*`, `timeline.*`, `opt.*` (includes `opt.phase.*` and `opt.phases.*`), `vessel.*`, `alerts.*`.
-- `LanguageService` holds the active language in a `BehaviorSubject`.
-- `TranslatePipe` (`pure: false`) calls `LanguageService.t(key)` on every change-detection cycle — this ensures instant UI updates when the language is switched.
-- Language switcher lives in `TopbarComponent` (dropdown).
-- In TypeScript code, `this.lang.t('key')` is used directly (e.g. validation error messages).
+---
+
+## Project structure
+
+```
+portoptim/src/app/
+├── app.component.ts/html          Root component
+├── app-routing.module.ts          Lazy-load routes
+├── app.module.ts
+│
+├── core/
+│   ├── i18n/
+│   │   └── translations.ts        ~840 translation strings (en/es/de/fr)
+│   ├── models/
+│   │   └── api.models.ts          BerthCall, OptimizationAssignment, OperationPhase,
+│   │                              ReplanRequest/Response, EarlyCompleteRequest/Response,
+│   │                              VesselDelay, VesselAlert (via VesselAlertService)
+│   └── services/
+│       ├── language.service.ts
+│       ├── portoptim-api.service.ts        HTTP client (transform + optimize + replan + early_complete)
+│       ├── optimization-runner.service.ts  Lifecycle: run / applyDelay / confirmEarlyComplete / reset
+│       ├── optimization-result-store.service.ts
+│       ├── optimization-params-store.service.ts
+│       ├── transformation-store.service.ts
+│       └── vessel-alert.service.ts         Time-based arrival/departure alerts (60 s refresh)
+│
+├── shared/
+│   ├── components/
+│   │   ├── layout/                Shell (sidebar + topbar + outlet + toasts)
+│   │   ├── topbar/                Alert badge, alert panel, language switcher
+│   │   ├── sidebar/               Nav links
+│   │   ├── optimization-toast/    Toast for optimizer / replan completion
+│   │   └── vessel-alert-toast/    Stack of vessel arrival/departure toasts (6 s auto-dismiss)
+│   ├── pipes/
+│   │   └── translate.pipe.ts
+│   └── shared.module.ts
+│
+└── features/
+    ├── dashboard/
+    │   ├── components/
+    │   │   ├── berth-timeline/    24 h Gantt with arrival + overrun warning icons
+    │   │   ├── metric-card/
+    │   │   ├── action-alerts/
+    │   │   └── terminal-map/
+    │   └── dashboard.component.ts/html
+    ├── data-input/
+    │   └── data-input.component.ts/html
+    ├── statistics/
+    │   └── statistics.component.ts/html   CSV tab + Optimizer tab (phases, resources, FTE)
+    └── optimization/
+        ├── optimization.component.ts/html  5-day Gantt + replanning + early complete + KPIs
+        └── components/
+            └── vessel-detail-panel/        Slide-over with phases, delay form, early-complete
+```
 
 ---
 
@@ -605,78 +515,11 @@ Custom client-side system — no Angular i18n builder.
 
 | Service | Protocol | Purpose |
 |---|---|---|
-| PortOptim backend | HTTP REST | Data transformation, schedule optimization |
+| PortOptim backend | HTTP REST | Data transformation, schedule optimization, re-planning, early completion |
 | PortOptim backend | WebSocket | AIS position relay (`/ws/ais-stream`) |
 | Esri ArcGIS | HTTPS (tile) | Satellite base map |
 | CartoDB | HTTPS (tile) | Place-name label overlay |
 | Nominatim (OSM) | HTTPS (JSON) | Port / place geocoding for map search |
-
----
-
-## Project structure
-
-```
-portoptim/
-├── src/
-│   ├── app/
-│   │   ├── app.component.ts/html          Root component (empty shell)
-│   │   ├── app-routing.module.ts          Root routes + lazy-load declarations
-│   │   ├── app.module.ts                  AppModule (BrowserModule, HttpClient, Shared)
-│   │   │
-│   │   ├── core/
-│   │   │   ├── i18n/
-│   │   │   │   └── translations.ts        ~800 translation strings (en/es/de/fr)
-│   │   │   ├── models/
-│   │   │   │   └── api.models.ts          All TypeScript API interfaces
-│   │   │   └── services/
-│   │   │       ├── language.service.ts           Active language + t() helper
-│   │   │       ├── portoptim-api.service.ts       HTTP client (transform + optimize)
-│   │   │       ├── transformation-store.service.ts
-│   │   │       ├── optimization-params-store.service.ts
-│   │   │       └── optimization-result-store.service.ts
-│   │   │
-│   │   ├── shared/
-│   │   │   ├── components/
-│   │   │   │   ├── sidebar/               Nav links (Dashboard, Data Input, Optimization)
-│   │   │   │   ├── topbar/                Title, language switcher, help modal
-│   │   │   │   └── layout/                Shell: sidebar + topbar + <router-outlet>
-│   │   │   ├── pipes/
-│   │   │   │   └── translate.pipe.ts      {{ 'key' | translate }} (pure: false)
-│   │   │   └── shared.module.ts           Exports layout components + TranslatePipe
-│   │   │
-│   │   └── features/
-│   │       ├── dashboard/
-│   │       │   ├── components/
-│   │       │   │   ├── metric-card/       KPI card (@Input: title, value, trend, icon)
-│   │       │   │   ├── berth-timeline/    24h swim-lane Gantt + "now" line
-│   │       │   │   ├── action-alerts/     Static prioritised alert panel
-│   │       │   │   └── terminal-map/      Leaflet satellite map + live AIS markers
-│   │       │   ├── services/
-│   │       │   │   └── ais-stream.service.ts  WebSocket client for AIS relay
-│   │       │   ├── dashboard.component.ts/html  Page container + KPI data binding
-│   │       │   ├── dashboard.module.ts
-│   │       │   └── dashboard-routing.module.ts
-│   │       │
-│   │       ├── data-input/
-│   │       │   ├── data-input.component.ts/html  Upload + preview + params form
-│   │       │   ├── data-input.module.ts
-│   │       │   └── data-input-routing.module.ts
-│   │       │
-│   │       └── optimization/
-│   │           ├── components/
-│   │           │   └── vessel-detail-panel/  Slide-over panel (historical + optimizer)
-│   │           ├── optimization.component.ts/html  Dual-mode Gantt + KPIs
-│   │           ├── optimization.module.ts
-│   │           └── optimization-routing.module.ts
-│   │
-│   ├── assets/
-│   └── styles/                            Global SCSS + CSS variable overrides
-│
-├── tailwind.config.js                     Custom palette, spacing, typography
-├── angular.json
-├── package.json
-└── README.md
-```
 
 ---
 
@@ -699,7 +542,7 @@ npm install
 ng serve
 ```
 
-Open `http://localhost:4200/`. The backend must be running on `http://localhost:8000` for API calls and the AIS WebSocket relay to work.
+Open `http://localhost:4200/`. The backend must be running on `http://localhost:8000`.
 
 ### Production build
 
@@ -707,19 +550,13 @@ Open `http://localhost:4200/`. The backend must be running on `http://localhost:
 ng build
 ```
 
-Compiled artefacts are written to `dist/`. Output hashing is enabled for all assets.
-
----
-
-## Future work
-
-**Angular / Ionic mobile app**: Angular's compatibility with Ionic Framework means a large portion of the existing component and service logic could be reused to produce a native iOS / Android application without rewriting from scratch. This is outside the current TFG scope but is the natural next step for field use by port operators on mobile devices.
+Compiled artefacts are written to `dist/`.
 
 ---
 
 ## Related
 
-- **portoptim-backend** — Python FastAPI that powers the data transformer, optimisation engine, and AIS WebSocket relay ([see backend README](../portoptim-backend/README.md))
+- **portoptim-backend** — Python FastAPI that powers the data transformer, optimisation engine, re-planning, early-completion, and AIS WebSocket relay ([see backend README](../portoptim-backend/README.md))
 
 ---
 
