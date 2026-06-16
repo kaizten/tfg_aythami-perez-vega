@@ -152,6 +152,8 @@ export class OptimizationComponent implements OnInit, OnDestroy {
   optimizerResult: OptimizationApiResult | null = null;
   unresolvedVessels: { id: string; eta: string }[] = [];
   showUnresolvedList = false;
+  /** When false, the Gantt rows are clipped to a fixed-height scroll area. */
+  ganttExpanded = false;
 
   /** Optimization-quality metrics — computed whenever a new result is loaded. */
   qualityStats: {
@@ -237,6 +239,10 @@ export class OptimizationComponent implements OnInit, OnDestroy {
       this.selectedDateIndex++;
       this.resultStore.ganttWindowIndex = this.selectedDateIndex;
     }
+  }
+
+  toggleGanttExpanded(): void {
+    this.ganttExpanded = !this.ganttExpanded;
   }
 
   // ── Other getters ─────────────────────────────────────────────────────────

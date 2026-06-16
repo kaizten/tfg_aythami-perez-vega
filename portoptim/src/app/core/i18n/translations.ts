@@ -200,6 +200,8 @@ const en: TranslationMap = {
   'opt.results.title':      'Optimized Schedule',
   'opt.results.gantt_title':'Proposed Berth Allocation',
   'opt.results.gantt_hint': 'Click a vessel block for schedule details',
+  'opt.gantt.expand':       'Expand full chart',
+  'opt.gantt.collapse':     'Collapse chart',
 
   // ── Optimizer — KPI labels ────────────────────────────────────────────────
   'opt.kpi.total_wait':     'Total Anchorage',
@@ -603,6 +605,8 @@ const es: TranslationMap = {
   'opt.results.title':      'Plan Optimizado',
   'opt.results.gantt_title':'Asignación de Muelles Propuesta',
   'opt.results.gantt_hint': 'Haz clic en un bloque para ver los detalles de planificación',
+  'opt.gantt.expand':       'Expandir diagrama completo',
+  'opt.gantt.collapse':     'Contraer diagrama',
 
   'opt.kpi.total_wait':     'Fondeo Total',
   'opt.kpi.total_wait_sub': 'tiempo de fondeo de todos los buques',
@@ -1003,6 +1007,8 @@ const de: TranslationMap = {
   'opt.results.title':      'Optimierter Fahrplan',
   'opt.results.gantt_title':'Vorgeschlagene Liegeplatzbelegung',
   'opt.results.gantt_hint': 'Klicken Sie auf einen Block für Planungsdetails',
+  'opt.gantt.expand':       'Vollständiges Diagramm anzeigen',
+  'opt.gantt.collapse':     'Diagramm einklappen',
 
   'opt.kpi.total_wait':     'Ankern Gesamt',
   'opt.kpi.total_wait_sub': 'Ankerzeit aller Schiffe',
@@ -1403,6 +1409,8 @@ const fr: TranslationMap = {
   'opt.results.title':      'Planning optimisé',
   'opt.results.gantt_title':'Affectation de postes proposée',
   'opt.results.gantt_hint': "Cliquez sur un bloc pour les détails de planification",
+  'opt.gantt.expand':       'Afficher le diagramme complet',
+  'opt.gantt.collapse':     'Réduire le diagramme',
 
   'opt.kpi.total_wait':     'Mouillage total',
   'opt.kpi.total_wait_sub': 'temps de mouillage de tous les navires',

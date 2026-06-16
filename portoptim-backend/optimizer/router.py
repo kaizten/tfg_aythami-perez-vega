@@ -10,6 +10,9 @@ POST /api/v1/optimize/calibrate  — load (or reload) a CSV calibration file
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import structlog
@@ -25,6 +28,9 @@ from .models import (
     ReplanResponse,
 )
 from .optimizer import Optimizer
+
+# Results are saved one level above the backend root (project data/ folder)
+_DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 logger = structlog.get_logger()
 
@@ -48,13 +54,32 @@ async def run_optimization(request: OptimizationRequest) -> OptimizationResponse
     schedule with per-vessel assignments and aggregate KPIs.
     """
     try:
-        return _optimizer.optimize(request)
+        result = _optimizer.optimize(request)
+        _save_optimization_result(result)
+        return result
     except Exception as exc:
         logger.error("optimization_error", error=str(exc), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Optimisation failed: {exc}",
         ) from exc
+
+
+def _save_optimization_result(result: OptimizationResponse) -> None:
+    """Persist the latest optimization result to data/optimization-results.json."""
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        # assignments and kpis are already plain dicts (list[dict] / dict)
+        output = {
+            "saved_at": datetime.now().isoformat(),
+            "kpis": result.kpis,
+            "assignments": result.assignments,
+        }
+        dest = _DATA_DIR / "optimization-results.json"
+        dest.write_text(json.dumps(output, indent=2, default=str), encoding="utf-8")
+        logger.info("optimization_result_saved", path=str(dest))
+    except Exception as exc:
+        logger.warning("optimization_result_save_failed", error=str(exc))
 
 
 @router.post(
