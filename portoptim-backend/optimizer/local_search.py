@@ -1,22 +1,4 @@
-"""
-Phase 3 — Local search (intra-berth swap heuristic).
-
-For each berth, tries all pairwise permutations (i, j) of the greedy sequence.
-A swap is accepted only when:
-  1. It does not violate the GT priority constraint (higher GT cannot follow
-     lower GT if both vessels were available at the same moment).
-  2. It strictly reduces the total waiting time of the group.
-
-The berth schedule is re-simulated from scratch for each candidate ordering so
-that noray positions and pilot/tug constraints are recomputed correctly.
-Before optimising each berth, background ResourcePool objects are built from
-all OTHER berths' current-best schedules so that cross-berth resource pressure
-is visible during the LS evaluation — preventing swaps that look cheap on berth
-time alone but cause resource conflicts that the post-LS enforcement would push
-even further back.
-
-Stopping criteria: 500 iterations or improvement < 0.5 % in the last 50.
-"""
+"""Phase 3 — Local search: improves greedy assignments via intra-berth pairwise swap heuristic."""
 
 from __future__ import annotations
 
@@ -30,12 +12,22 @@ from .scheduler import ContinuousBerthState, DiscreteBerthState, ResourcePool, m
 
 logger = structlog.get_logger()
 
+# Fixed - maximum number of swap iterations before stopping
 MAX_ITER = 500
+# Fixed - number of recent iterations examined for stagnation detection
 STAGNATION_WINDOW = 50
-MIN_IMPROVEMENT_RATIO = 0.005   # 0.5 %
+# Fixed - minimum fractional improvement required within the stagnation window to continue
+MIN_IMPROVEMENT_RATIO = 0.005
 
 
 class LocalSearch:
+    """
+    Local search optimizer that improves berth schedules by trying pairwise vessel swaps.
+
+    For each berth, all pairwise permutations of the greedy sequence are tested. A swap is
+    accepted only when it does not violate GT priority and strictly reduces total waiting time.
+    """
+
     def __init__(
         self,
         berths: list[BerthZone],
@@ -43,12 +35,23 @@ class LocalSearch:
         num_pilots: int = 3,
         num_tugs: int = 2,
     ) -> None:
-        self.berth_map: dict[str, BerthZone] = {b.berth_id: b for b in berths}
-        self.vessel_map: dict[str, VesselInput] = {v.id: v for v in vessels}
-        self.num_pilots = num_pilots
-        self.num_tugs = num_tugs
+        """
+        Initialize the local search with berth and vessel data and resource counts.
 
-    # ── Public API ─────────────────────────────────────────────────────────────
+        Args:
+            berths (list[BerthZone]): All berths available in the port. Required.
+            vessels (list[VesselInput]): All vessels in the current optimization batch. Required.
+            num_pilots (int): Total number of pilots available in the shift. Optional, defaults to 3.
+            num_tugs (int): Total number of tugs available in the shift. Optional, defaults to 2.
+        """
+        # Computed - berth configuration lookup by berth_id
+        self.berth_map: dict[str, BerthZone] = {b.berth_id: b for b in berths}
+        # Computed - vessel input lookup by vessel id
+        self.vessel_map: dict[str, VesselInput] = {v.id: v for v in vessels}
+        # User-provided - total pilots available for resource simulation
+        self.num_pilots = num_pilots
+        # User-provided - total tugs available for resource simulation
+        self.num_tugs = num_tugs
 
     def improve(
         self,
@@ -56,21 +59,20 @@ class LocalSearch:
         initial_states: Optional[dict[str, ContinuousBerthState | DiscreteBerthState]] = None,
     ) -> tuple[list[AssignmentResult], float]:
         """
-        Returns (improved_assignments, improvement_pct).
+        Improve the greedy assignment schedule using intra-berth pairwise swaps.
 
-        improvement_pct is relative to the greedy solution total waiting time.
+        Berths are processed sequentially. Before each berth, background ResourcePools are
+        built from all other berths' current-best schedules so that cross-berth resource
+        pressure is visible during candidate evaluation.
 
-        initial_states: berth states *before* the current batch was scheduled
-        (e.g. end-of-previous-day states).  Each simulation for this batch
-        starts from a copy of that state so previous-day occupancy is respected.
+        Args:
+            assignments (list[AssignmentResult]): Greedy assignments to improve. Required.
+            initial_states (dict): Berth states before the current batch, used to respect prior-day occupancy in simulations. Optional, defaults to None.
 
-        Berths are processed sequentially.  Before each berth, background
-        ResourcePools are built from all other berths' current-best schedules so
-        that _simulate() evaluates candidates with realistic cross-berth resource
-        cost.  current_best_by_berth is updated after each berth so later berths
-        see the most-current resource picture.
+        Returns:
+            tuple[list[AssignmentResult], float]: Pair of (improved_assignments, improvement_pct)
+                where improvement_pct is relative to the greedy solution total waiting time.
         """
-        # Split by berth
         berth_groups: dict[str, list[AssignmentResult]] = {}
         others: list[AssignmentResult] = []
         for a in assignments:
@@ -83,8 +85,6 @@ class LocalSearch:
             a.waiting_time_h for group in berth_groups.values() for a in group
         )
 
-        # Seed current_best_by_berth with greedy assignments; update as each
-        # berth is improved so background pools always reflect the latest state.
         current_best_by_berth: dict[str, list[AssignmentResult]] = {
             bid: list(group) for bid, group in berth_groups.items()
         }
@@ -115,19 +115,20 @@ class LocalSearch:
         )
         return improved, pct
 
-    # ── Background pool builder ────────────────────────────────────────────────
-
     def _build_background_pools(
         self,
         berth_assignments: dict[str, list[AssignmentResult]],
         exclude_berth: str,
     ) -> tuple[ResourcePool, ResourcePool]:
         """
-        Build pilot/tug ResourcePool objects pre-loaded with all manoeuvre
-        commitments from every berth except *exclude_berth*.
+        Build pilot and tug ResourcePools pre-loaded with manoeuvre commitments from all berths except exclude_berth.
 
-        Passed to _simulate() so that cross-berth resource pressure is visible
-        when evaluating candidate orderings for the excluded berth.
+        Args:
+            berth_assignments (dict[str, list[AssignmentResult]]): Current-best assignments keyed by berth_id. Required.
+            exclude_berth (str): Berth to exclude so its resource usage is not double-counted during simulation. Required.
+
+        Returns:
+            tuple[ResourcePool, ResourcePool]: Pair of (background_pilots, background_tugs) pools.
         """
         pilots = ResourcePool(self.num_pilots)
         tugs   = ResourcePool(self.num_tugs)
@@ -146,8 +147,6 @@ class LocalSearch:
                 tugs.allocate_n(n,  undock_start, mh)
         return pilots, tugs
 
-    # ── Per-berth improvement ─────────────────────────────────────────────────
-
     def _improve_berth(
         self,
         bid: str,
@@ -156,6 +155,19 @@ class LocalSearch:
         background_pilots: Optional[ResourcePool] = None,
         background_tugs: Optional[ResourcePool] = None,
     ) -> list[AssignmentResult]:
+        """
+        Run the pairwise swap heuristic for one berth and return the best vessel ordering found.
+
+        Args:
+            bid (str): Berth identifier being optimized. Required.
+            group (list[AssignmentResult]): Greedy assignments for this berth. Required.
+            initial_state (ContinuousBerthState | DiscreteBerthState): Prior-day berth occupancy state for simulation. Optional, defaults to None.
+            background_pilots (ResourcePool): Pilot commitments from other berths. Optional, defaults to None.
+            background_tugs (ResourcePool): Tug commitments from other berths. Optional, defaults to None.
+
+        Returns:
+            list[AssignmentResult]: Improved assignments for this berth.
+        """
         if len(group) < 2:
             return group
 
@@ -167,8 +179,6 @@ class LocalSearch:
         if vessels_in_order is None:
             return group
 
-        # dur_map now carries (dur_h, src, n_tugs, maneuver_h) so _simulate()
-        # has everything it needs without extra lookups.
         dur_map = {
             a.vessel_id: (
                 a.duration_estimated_h,
@@ -196,7 +206,6 @@ class LocalSearch:
                     candidate = best_order[:]
                     candidate[i], candidate[j] = candidate[j], candidate[i]
 
-                    # Check GT hard constraint before simulating
                     if not self._gt_constraint_ok(
                         berth, candidate, dur_map, initial_state,
                         background_pilots, background_tugs,
@@ -217,7 +226,6 @@ class LocalSearch:
 
             recent_improvements.append(made_progress)
 
-            # Check stagnation
             if len(recent_improvements) >= STAGNATION_WINDOW:
                 window = recent_improvements[-STAGNATION_WINDOW:]
                 if not any(window):
@@ -231,8 +239,6 @@ class LocalSearch:
         )
         return self._build_results(berth, best_order, best_waits, group)
 
-    # ── Simulation ────────────────────────────────────────────────────────────
-
     def _simulate(
         self,
         berth: BerthZone,
@@ -243,13 +249,20 @@ class LocalSearch:
         background_tugs: Optional[ResourcePool] = None,
     ) -> list[tuple[float, Optional[int], Optional[int], datetime]]:
         """
-        Simulate berth + resource scheduling for a given vessel order.
-        Returns list of (wait_h, noray_start, noray_end, t_start) per vessel.
+        Simulate berth and resource scheduling for a given vessel ordering.
 
-        background_pilots / background_tugs are deep-copied so that allocations
-        for this candidate do not mutate the caller's pools.  Each vessel's
-        docking and undocking manoeuvres are committed into the local copies so
-        within-berth resource conflicts are tracked correctly across the sequence.
+        Background pools are deep-copied so allocations for this candidate do not mutate the caller's pools.
+
+        Args:
+            berth (BerthZone): Berth configuration for the simulation. Required.
+            vessel_order (list[VesselInput]): Vessels in the order to simulate. Required.
+            dur_map (dict[str, tuple]): Mapping of vessel_id to (dur_h, src, n_tugs, maneuver_h). Required.
+            initial_state (ContinuousBerthState | DiscreteBerthState): Prior-day state to start from. Optional, defaults to None.
+            background_pilots (ResourcePool): Pilot commitments from other berths. Optional, defaults to None.
+            background_tugs (ResourcePool): Tug commitments from other berths. Optional, defaults to None.
+
+        Returns:
+            list[tuple[float, Optional[int], Optional[int], datetime]]: Per-vessel list of (wait_h, noray_start, noray_end, t_start).
         """
         state = initial_state.copy() if initial_state is not None else make_berth_state(berth)
         pilots = background_pilots.copy() if background_pilots is not None else ResourcePool(self.num_pilots)
@@ -260,7 +273,6 @@ class LocalSearch:
         for v in vessel_order:
             dur_h, _, n_tugs, mh = dur_map[v.id]
 
-            # Step 1: find earliest berth slot from vessel ETA
             if isinstance(state, ContinuousBerthState):
                 res = state.find_slot(v.eslora, v.eta, dur_h)
                 if res is None:
@@ -276,8 +288,6 @@ class LocalSearch:
                 ns, t_start = res
                 ne = ns
 
-            # Step 2: satisfy docking resource constraints — mirrors the greedy
-            # scheduler's inner loop so the same berth+resource co-search is used.
             for _ in range(8):
                 pilot_ok = pilots.earliest_n_available(1,      t_start, duration_h=mh)
                 tug_ok   = tugs.earliest_n_available(n_tugs,   t_start, duration_h=mh)
@@ -297,7 +307,6 @@ class LocalSearch:
                     ns, t_start = res
                     ne = ns
 
-            # Step 3: commit berth slot and both manoeuvre windows
             t_end = t_start + timedelta(hours=dur_h)
             if isinstance(state, ContinuousBerthState):
                 state.assign(ns, ne, t_start, t_end, v.id)
@@ -315,8 +324,6 @@ class LocalSearch:
 
         return results
 
-    # ── GT constraint check ───────────────────────────────────────────────────
-
     def _gt_constraint_ok(
         self,
         berth: BerthZone,
@@ -327,11 +334,21 @@ class LocalSearch:
         background_tugs: Optional[ResourcePool] = None,
     ) -> bool:
         """
-        Hard rule: a higher-GT vessel must not follow a lower-GT vessel in the
-        sequence if both are already available (ETA ≤ first_scheduled_start).
+        Check whether a candidate vessel ordering respects the GT priority hard constraint.
 
-        Start times are computed by _simulate() so resource delays are reflected
-        in the comparison (same as in the final cost evaluation).
+        A higher-GT vessel must not follow a lower-GT vessel in the sequence if the higher-GT
+        vessel was already available (ETA at or before the lower-GT vessel's scheduled start).
+
+        Args:
+            berth (BerthZone): Berth configuration for the simulation. Required.
+            vessel_order (list[VesselInput]): Candidate vessel ordering to validate. Required.
+            dur_map (dict[str, tuple]): Mapping of vessel_id to (dur_h, src, n_tugs, maneuver_h). Required.
+            initial_state (ContinuousBerthState | DiscreteBerthState): Prior-day state for simulation. Optional, defaults to None.
+            background_pilots (ResourcePool): Pilot commitments from other berths. Optional, defaults to None.
+            background_tugs (ResourcePool): Tug commitments from other berths. Optional, defaults to None.
+
+        Returns:
+            bool: True when the ordering satisfies the GT priority constraint, False otherwise.
         """
         waits = self._simulate(
             berth, vessel_order, dur_map, initial_state,
@@ -343,20 +360,24 @@ class LocalSearch:
             for j in range(i + 1, len(vessel_order)):
                 vi = vessel_order[i]
                 vj = vessel_order[j]
-                # vj comes after vi in the sequence
                 if vj.gt > vi.gt:
-                    # Higher-GT vessel is later — only allowed if it was not yet available
-                    # when the lower-GT vessel started
                     t_first = t_starts[i]
                     if vj.eta <= t_first:
-                        return False  # vj was available but gets deferred — violation
+                        return False
         return True
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _ordered_vessels(
         self, group: list[AssignmentResult]
     ) -> Optional[list[VesselInput]]:
+        """
+        Return vessels from an assignment group sorted by scheduled_start, or None if any vessel is missing.
+
+        Args:
+            group (list[AssignmentResult]): Assignment results for one berth. Required.
+
+        Returns:
+            Optional[list[VesselInput]]: Ordered list of VesselInput objects, or None if a vessel_id is not found in vessel_map.
+        """
         ordered: list[VesselInput] = []
         for a in sorted(group, key=lambda x: x.scheduled_start):
             v = self.vessel_map.get(a.vessel_id)
@@ -372,6 +393,18 @@ class LocalSearch:
         waits: list[tuple[float, Optional[int], Optional[int], datetime]],
         original_group: list[AssignmentResult],
     ) -> list[AssignmentResult]:
+        """
+        Build the final AssignmentResult list from the best vessel ordering and simulation output.
+
+        Args:
+            berth (BerthZone): Berth configuration for this group. Required.
+            vessel_order (list[VesselInput]): Best vessel ordering found by the swap heuristic. Required.
+            waits (list[tuple]): Simulation results corresponding to vessel_order; each tuple is (wait_h, noray_start, noray_end, t_start). Required.
+            original_group (list[AssignmentResult]): Original greedy assignments, used to carry over metadata. Required.
+
+        Returns:
+            list[AssignmentResult]: Updated assignment results reflecting the improved ordering.
+        """
         orig_map = {a.vessel_id: a for a in original_group}
         new_results: list[AssignmentResult] = []
         for v, (wait_h, ns, ne, t_start) in zip(vessel_order, waits):
@@ -403,7 +436,7 @@ class LocalSearch:
                     status=orig.status,
                     pilot_caused_delay=orig.pilot_caused_delay,
                     tug_caused_delay=orig.tug_caused_delay,
-                    caused_delay_to=[],  # recomputed by optimizer after all LS rounds
+                    caused_delay_to=[],
                     maneuver_h=orig.maneuver_h,
                     phases=vessel_phases,
                 )

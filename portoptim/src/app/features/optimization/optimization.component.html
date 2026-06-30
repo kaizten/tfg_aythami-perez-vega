@@ -1,6 +1,6 @@
 <div class="p-margin bg-background">
 
-  <!-- ── Empty state ─────────────────────────────────────────────────────── -->
+  <!-- Empty state -->
   <div *ngIf="!hasData" class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-lg">
     <div class="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
       <span class="material-symbols-outlined text-4xl text-on-surface-variant">upload_file</span>
@@ -16,10 +16,10 @@
     </div>
   </div>
 
-  <!-- ── Loaded state ────────────────────────────────────────────────────── -->
+  <!-- Loaded state -->
   <ng-container *ngIf="hasData">
 
-    <!-- Header -->
+    <!-- Page header -->
     <div class="flex justify-between items-end mb-xl">
       <div>
         <h3 class="text-h1 font-bold text-on-surface">
@@ -83,7 +83,7 @@
               class="material-symbols-outlined text-red-400 hover:text-red-600">close</button>
     </div>
 
-    <!-- Loading overlay (initial optimization run) -->
+    <!-- Progress indicator -->
     <div *ngIf="isRunning" class="mb-xl flex flex-col items-center gap-md py-xl text-on-surface-variant">
       <span class="material-symbols-outlined text-5xl animate-spin text-teal-500">settings</span>
       <p class="text-body-md">{{ 'opt.running_msg' | translate }}</p>
@@ -157,7 +157,7 @@
               class="material-symbols-outlined text-red-400 hover:text-red-600">close</button>
     </div>
 
-    <!-- KPI Cards -->
+    <!-- KPI cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-lg mb-xl">
       <div *ngFor="let kpi of kpis"
            class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
@@ -178,7 +178,7 @@
       </div>
     </div>
 
-    <!-- ── Unresolved vessels detail (collapsed by default) ────────────── -->
+    <!-- Unresolved vessels list -->
     <div *ngIf="unresolvedVessels.length > 0" class="mb-xl">
       <button type="button" (click)="showUnresolvedList = !showUnresolvedList"
               class="flex items-center gap-sm px-md py-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors text-label-sm w-full">
@@ -204,11 +204,11 @@
       </div>
     </div>
 
-    <!-- ── Quality panel (visible once optimizer has run) ───────────────── -->
+    <!-- Optimization quality panel -->
     <div *ngIf="optimizerResult && !isRunning && qualityStats"
          class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-      <!-- Header -->
+      <!-- Quality panel header -->
       <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
         <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
           <span class="material-symbols-outlined text-emerald-600">rocket_launch</span>
@@ -219,10 +219,9 @@
         </p>
       </div>
 
-      <!-- 4 metric tiles -->
+      <!-- Quality metric tiles -->
       <div class="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 divide-x divide-slate-100">
 
-        <!-- Avg Stay Improvement (CSV → Optimizer) -->
         <div class="px-lg py-md flex flex-col gap-xs">
           <div class="flex items-center gap-xs">
             <span class="material-symbols-outlined text-lg text-emerald-600">trending_up</span>
@@ -239,7 +238,6 @@
           </p>
         </div>
 
-        <!-- LS vs Greedy improvement (already in KPI cards but here with context) -->
         <div class="px-lg py-md flex flex-col gap-xs">
           <div class="flex items-center gap-xs">
             <span class="material-symbols-outlined text-lg text-sky-600">auto_fix_high</span>
@@ -255,7 +253,6 @@
           </p>
         </div>
 
-        <!-- Zero-Wait Vessels -->
         <div class="px-lg py-md flex flex-col gap-xs">
           <div class="flex items-center gap-xs">
             <span class="material-symbols-outlined text-lg text-teal-600">directions_boat</span>
@@ -271,7 +268,6 @@
           </p>
         </div>
 
-        <!-- Max Waiting Time -->
         <div class="px-lg py-md flex flex-col gap-xs">
           <div class="flex items-center gap-xs">
             <span class="material-symbols-outlined text-lg text-amber-600">hourglass_top</span>
@@ -290,7 +286,7 @@
       </div>
     </div>
 
-    <!-- ── Placeholder: run optimizer to see timeline ───────────────────── -->
+    <!-- Gantt placeholder (pre-run) -->
     <div *ngIf="!optimizerResult && !isRunning"
          class="bg-white rounded-xl shadow-card border border-slate-200 mb-xl flex flex-col items-center justify-center gap-md py-xl text-center">
       <div class="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center">
@@ -307,7 +303,7 @@
       </button>
     </div>
 
-    <!-- ── Gantt (only after optimizer has run) ──────────────────────────── -->
+    <!-- Gantt chart -->
     <div *ngIf="optimizerResult && !isRunning"
          class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
       <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
@@ -357,16 +353,14 @@
           <div class="flex ml-28 border-b border-slate-200 mb-4 pb-2">
             <div *ngFor="let h of filteredGanttHours; let first = first"
                  class="flex-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-tighter relative">
-              <!-- Day-boundary tick in the header (aligns with midnight grid lines) -->
               <span *ngIf="!first"
                     class="absolute left-0 top-0 bottom-0 border-l border-slate-200 pointer-events-none">
               </span>
               {{ h }}
-              <!-- Noon tick mark -->
               <span class="absolute bottom-0 left-1/2 -translate-x-1/2 w-px h-1.5 bg-slate-300 pointer-events-none"></span>
             </div>
           </div>
-          <!-- Berth rows (scrollable by default — toggle expands to show the full chart) -->
+          <!-- Berth rows -->
           <div [ngClass]="ganttExpanded ? '' : 'max-h-[480px] overflow-y-auto'">
           <div *ngFor="let berth of filteredGanttBerths; let even = even"
                class="flex items-center border-t border-slate-100 py-2"
@@ -376,7 +370,7 @@
               <span class="text-label-sm text-on-surface-variant truncate block">{{ berth.name }}</span>
             </div>
             <div class="flex-1 relative" [style.height]="laneHeight(berth.laneCount)">
-              <!-- ── Vertical grid lines ──────────────────────────────── -->
+              <!-- Vertical grid lines -->
               <div *ngFor="let line of ganttGridLines"
                    class="absolute inset-y-0 w-0 pointer-events-none"
                    [ngClass]="line.noon
@@ -384,7 +378,7 @@
                      : 'border-l border-slate-300'"
                    [style.left]="line.left">
               </div>
-              <!-- ─────────────────────────────────────────────────────── -->
+              <!-- Vessel bars -->
               <div *ngFor="let vessel of berth.vessels"
                    class="absolute h-10 shadow-sm cursor-pointer hover:brightness-110 transition-all overflow-hidden flex"
                    [ngClass]="ganttBarClass(vessel)"
@@ -394,7 +388,7 @@
                    [title]="vessel.name"
                    (click)="openOptimizerDetail(vessel)">
 
-                <!-- Phase segments (optimizer with phases available) -->
+                <!-- Phase segments -->
                 <ng-container *ngIf="vessel.phaseSegments; else solidBlock">
                   <div *ngFor="let seg of vessel.phaseSegments"
                        class="h-full flex-shrink-0"
@@ -402,25 +396,21 @@
                        [style.width]="seg.widthPct">
                   </div>
                   <div class="absolute inset-0 flex items-center px-2 pointer-events-none gap-1">
-                    <!-- ← carry-over arrow: bar continues from previous window -->
                     <span *ngIf="vessel.carryOver"
                           class="material-symbols-outlined text-base text-white opacity-90 flex-shrink-0">
                       keyboard_double_arrow_left
                     </span>
                     <span class="text-white text-[11px] font-bold truncate flex-1 phase-label">{{ vessel.name }}</span>
-                    <!-- 🚢 Arrival warning: vessel approaching / arrived < 3 h ago -->
                     <span *ngIf="vessel.showArrivalWarning"
                           class="material-symbols-outlined text-[14px] text-sky-300 flex-shrink-0 animate-pulse"
                           [title]="'notif.arrival.reason' | translate">
                       directions_boat
                     </span>
-                    <!-- ⚠ Departure warning: scheduled end passed within 5 h -->
                     <span *ngIf="vessel.showWarning"
                           class="material-symbols-outlined text-[14px] text-yellow-300 flex-shrink-0 animate-pulse"
                           [title]="'vessel.delay_warning' | translate">
                       warning
                     </span>
-                    <!-- ⏱ Applied delay badge -->
                     <span *ngIf="vessel.delayH !== undefined"
                           class="flex items-center gap-0.5 flex-shrink-0 bg-red-700/60 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none"
                           [title]="'opt.delay.badge_title' | translate">
@@ -432,7 +422,6 @@
                       <span class="material-symbols-outlined text-[11px] text-amber-300">anchor</span>
                       {{ hoursToHHMM(vessel.fondeoH!) }}
                     </span>
-                    <!-- → clipped arrow: bar continues into next window -->
                     <span *ngIf="vessel.clipped"
                           class="material-symbols-outlined text-base text-white opacity-90 flex-shrink-0">
                       keyboard_double_arrow_right
@@ -443,31 +432,26 @@
                 <!-- Solid block (unassigned) -->
                 <ng-template #solidBlock>
                   <div class="flex items-center px-2 w-full gap-1">
-                    <!-- ← carry-over arrow -->
                     <span *ngIf="vessel.carryOver"
                           class="material-symbols-outlined text-base text-white flex-shrink-0 opacity-90">
                       keyboard_double_arrow_left
                     </span>
                     <span class="text-white text-[11px] font-bold truncate flex-1">{{ vessel.name }}</span>
-                    <!-- 🚢 Arrival warning -->
                     <span *ngIf="vessel.showArrivalWarning"
                           class="material-symbols-outlined text-[14px] text-sky-300 flex-shrink-0 animate-pulse"
                           [title]="'notif.arrival.reason' | translate">
                       directions_boat
                     </span>
-                    <!-- ⚠ Departure warning -->
                     <span *ngIf="vessel.showWarning"
                           class="material-symbols-outlined text-[14px] text-yellow-300 flex-shrink-0 animate-pulse"
                           [title]="'vessel.delay_warning' | translate">
                       warning
                     </span>
-                    <!-- ⏱ Applied delay badge -->
                     <span *ngIf="vessel.delayH !== undefined"
                           class="flex items-center gap-0.5 flex-shrink-0 bg-red-700/60 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none">
                       <span class="material-symbols-outlined text-[11px]">schedule</span>
                       +{{ hoursToHHMM(vessel.delayH!) }}
                     </span>
-                    <!-- → clipped arrow -->
                     <span *ngIf="vessel.clipped"
                           class="material-symbols-outlined text-base text-white flex-shrink-0 opacity-90">
                       keyboard_double_arrow_right
@@ -516,10 +500,10 @@
       </div>
     </div>
 
-  </ng-container><!-- /hasData -->
+  </ng-container>
 </div>
 
-<!-- Vessel Detail Panel -->
+<!-- Vessel detail panel -->
 <app-vessel-detail-panel
   [vessel]="selectedVessel"
   [isOpen]="isPanelOpen"

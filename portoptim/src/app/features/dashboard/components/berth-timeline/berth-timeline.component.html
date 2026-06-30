@@ -1,6 +1,6 @@
 <div class="bg-white rounded-xl border border-outline-variant shadow-card overflow-hidden">
 
-  <!-- Header -->
+  <!-- Timeline header -->
   <div class="p-lg border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
     <div class="flex items-center gap-md">
       <span class="material-symbols-outlined text-primary-container">timeline</span>
@@ -12,9 +12,9 @@
       </span>
     </div>
 
+    <!-- Day navigation controls -->
     <div *ngIf="availableDays.length" class="flex items-center gap-base">
 
-      <!-- Viewing today: [PREVIOUS DAY] [TODAY] [NEXT DAY] -->
       <ng-container *ngIf="isToday">
         <button type="button"
                 class="px-md py-1.5 text-xs font-bold border border-outline text-on-surface-variant rounded hover:bg-white transition-all disabled:opacity-40"
@@ -34,7 +34,6 @@
         </button>
       </ng-container>
 
-      <!-- Not on today: [Go to Today] [PREVIOUS DAY] (date) [NEXT DAY] -->
       <ng-container *ngIf="!isToday">
         <button type="button"
                 class="px-md py-1.5 text-xs font-bold border border-teal-600 text-teal-600 rounded hover:bg-teal-50 transition-all"
@@ -61,11 +60,11 @@
     </div>
   </div>
 
-  <!-- Gantt -->
+  <!-- Gantt chart -->
   <div class="p-lg overflow-x-auto">
     <div class="min-w-[700px]">
 
-      <!-- Hour axis -->
+      <!-- Time axis -->
       <div class="flex ml-28 border-b border-slate-200 pb-2 mb-1">
         <div *ngFor="let h of hourLabels"
              class="flex-1 text-left text-[10px] font-bold uppercase tracking-tighter text-slate-400">
@@ -73,21 +72,16 @@
         </div>
       </div>
 
-      <!-- Scrollable berth rows -->
+      <!-- Berth rows -->
       <div class="max-h-[480px] overflow-y-auto">
-        <!--
-          Inner wrapper carries position:relative so the now-line's top/bottom
-          stretch to the full *content* height, not just the 480px viewport.
-        -->
         <div class="relative">
 
-        <!-- "Now" line — only visible when viewing today -->
+        <!-- Now line -->
         <div *ngIf="isToday"
              class="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 opacity-80 pointer-events-none"
              [style.left]="currentTimeLeft">
         </div>
 
-        <!-- Berth rows -->
         <div *ngFor="let berth of ganttBerths; let even = even"
              class="flex items-center border-t border-slate-100 py-2"
              [ngClass]="even ? 'bg-slate-50/40' : 'bg-white'"
@@ -98,7 +92,7 @@
             <span class="text-label-sm text-on-surface-variant truncate block">{{ berth.name }}</span>
           </div>
 
-          <!-- Chart area -->
+          <!-- Vessel blocks -->
           <div class="flex-1 relative" [style.height]="laneHeight(berth.laneCount)">
             <div *ngFor="let vessel of berth.vessels"
                  class="absolute h-10 shadow-sm overflow-hidden flex"
@@ -111,7 +105,7 @@
                  [style.top]="vessel.top"
                  [title]="vessel.name">
 
-              <!-- Phase segments (optimizer mode with phases) -->
+              <!-- Phase segments (optimizer mode) -->
               <ng-container *ngIf="vessel.phaseSegments; else solidBlock">
                 <div *ngFor="let seg of vessel.phaseSegments"
                      class="h-full flex-shrink-0"
@@ -119,32 +113,30 @@
                      [style.width]="seg.widthPct">
                 </div>
                 <div class="absolute inset-0 flex items-center px-2 pointer-events-none gap-1">
-                  <!-- ← carry-over arrow -->
                   <span *ngIf="vessel.clippedLeft"
                         class="material-symbols-outlined text-base text-white opacity-90 flex-shrink-0">
                     keyboard_double_arrow_left
                   </span>
                   <span class="text-white text-[11px] font-bold truncate flex-1 phase-label">{{ vessel.name }}</span>
-                  <!-- ⚠ Delay warning -->
+                  <!-- Delay warning -->
                   <span *ngIf="vessel.showWarning"
                         class="material-symbols-outlined text-[14px] text-yellow-300 flex-shrink-0 animate-pulse"
                         [title]="'vessel.delay_warning' | translate">
                     warning
                   </span>
-                  <!-- ⏱ Applied delay badge -->
+                  <!-- Applied delay badge -->
                   <span *ngIf="vessel.delayH !== undefined"
                         class="flex items-center gap-0.5 flex-shrink-0 bg-red-700/60 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none"
                         [title]="'opt.delay.badge_title' | translate">
                     <span class="material-symbols-outlined text-[11px]">schedule</span>
                     +{{ hoursToHHMM(vessel.delayH!) }}
                   </span>
-                  <!-- ⚓ Fondeo badge -->
+                  <!-- Fondeo badge -->
                   <span *ngIf="vessel.fondeoH !== undefined"
                         class="flex items-center gap-0.5 flex-shrink-0 bg-black/25 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none">
                     <span class="material-symbols-outlined text-[11px] text-amber-300">anchor</span>
                     {{ hoursToHHMM(vessel.fondeoH!) }}
                   </span>
-                  <!-- → clipped arrow -->
                   <span *ngIf="vessel.clippedRight"
                         class="material-symbols-outlined text-base text-white opacity-90 flex-shrink-0">
                     keyboard_double_arrow_right
@@ -160,13 +152,11 @@
                     keyboard_double_arrow_left
                   </span>
                   <span class="text-white text-[11px] font-bold truncate flex-1">{{ vessel.name }}</span>
-                  <!-- ⚠ Delay warning -->
                   <span *ngIf="vessel.showWarning"
                         class="material-symbols-outlined text-[14px] text-yellow-300 flex-shrink-0 animate-pulse"
                         [title]="'vessel.delay_warning' | translate">
                     warning
                   </span>
-                  <!-- ⏱ Applied delay badge -->
                   <span *ngIf="vessel.delayH !== undefined"
                         class="flex items-center gap-0.5 flex-shrink-0 bg-red-700/60 rounded px-1 py-0.5 text-white text-[10px] font-semibold leading-none">
                     <span class="material-symbols-outlined text-[11px]">schedule</span>
@@ -182,8 +172,8 @@
           </div>
         </div>
 
-        </div><!-- /inner relative wrapper -->
-      </div><!-- /scrollable -->
+        </div>
+      </div>
     </div>
   </div>
 

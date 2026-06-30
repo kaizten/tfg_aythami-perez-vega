@@ -1,14 +1,15 @@
 <div class="p-margin bg-background">
+  <!-- Page header -->
   <section class="mb-xl">
     <h2 class="text-h1 font-bold text-on-background mb-xs">{{ 'di.page_title' | translate }}</h2>
     <p class="text-body-md text-on-surface-variant">{{ 'di.page_subtitle' | translate }}</p>
   </section>
 
   <div class="grid grid-cols-12 gap-lg">
-    <!-- Upload + Preview column -->
+    <!-- Upload and preview column -->
     <div class="col-span-12 lg:col-span-8 flex flex-col gap-lg">
 
-      <!-- Upload Zone -->
+      <!-- Upload area -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         <div class="p-lg border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <h3 class="text-h3 font-semibold text-on-background flex items-center gap-sm">
@@ -61,7 +62,7 @@
         </div>
       </div>
 
-      <!-- Preview Table -->
+      <!-- File preview table -->
       <div *ngIf="hasResult" class="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         <div class="p-lg border-b border-slate-100 flex justify-between items-center">
           <div>
@@ -80,6 +81,7 @@
             {{ 'di.preview.view_opt' | translate }}
           </button>
         </div>
+        <!-- Vessels table -->
         <div class="overflow-x-auto">
           <table class="w-full border-collapse">
             <thead class="bg-[#002147] text-white">
@@ -111,7 +113,7 @@
     <!-- Sidebar -->
     <div class="col-span-12 lg:col-span-4 flex flex-col gap-lg">
 
-      <!-- Transformation Summary -->
+      <!-- Transformation summary -->
       <div *ngIf="hasResult; else waitingCard"
            class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
         <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">
@@ -154,7 +156,7 @@
         </button>
       </div>
 
-      <!-- Waiting card -->
+      <!-- Waiting card (no file yet) -->
       <ng-template #waitingCard>
         <div class="bg-[#002147] text-white rounded-xl p-lg shadow-lg">
           <h4 class="text-label-md text-teal-400 mb-md uppercase tracking-widest">
@@ -167,7 +169,7 @@
         </div>
       </ng-template>
 
-      <!-- Optimization Parameters -->
+      <!-- Berth configuration -->
       <div class="bg-white rounded-xl border border-slate-200 p-lg shadow-card">
         <div class="flex items-center justify-between mb-md">
           <h4 class="text-label-md text-on-surface-variant uppercase tracking-widest">
@@ -207,7 +209,7 @@
           </div>
         </div>
 
-        <!-- Pilots & Tugs -->
+        <!-- Pilots and tugs inputs -->
         <div class="space-y-md mb-lg">
           <div>
             <label class="text-body-sm text-on-surface-variant block mb-xs">
@@ -239,13 +241,13 @@
           </div>
         </div>
 
-        <!-- Mooring Zones -->
+        <!-- Mooring zones -->
         <div>
           <p class="text-label-sm text-on-surface-variant uppercase tracking-widest mb-sm">
             {{ 'di.params.zones_title' | translate }}
           </p>
 
-          <!-- Search field -->
+          <!-- Zone search field -->
           <div *ngIf="hasResult" class="relative mb-sm">
             <span class="material-symbols-outlined text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none select-none">
               search
@@ -254,6 +256,7 @@
                    [(ngModel)]="berthSearchQuery"
                    [placeholder]="'di.params.berth_search' | translate"
                    [attr.aria-label]="'di.params.berth_search' | translate"
+                   [attr.title]="'di.params.berth_search' | translate"
                    class="w-full rounded-lg pl-7 pr-sm py-xs text-body-sm border border-slate-200 bg-slate-50 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition">
             <button *ngIf="berthSearchQuery"
                     type="button"
@@ -263,7 +266,7 @@
             </button>
           </div>
 
-          <!-- No data yet -->
+          <!-- No data placeholder -->
           <div *ngIf="!hasResult" class="flex flex-col items-center justify-center py-md text-slate-400">
             <span class="material-symbols-outlined text-3xl mb-xs">anchor</span>
             <p class="text-body-sm text-center">{{ 'di.params.zones_empty' | translate }}</p>
@@ -281,7 +284,7 @@
             <div *ngFor="let zone of filteredMooringZones"
                  class="rounded-lg border border-slate-200 bg-slate-50 p-sm">
 
-              <!-- Zone name -->
+              <!-- Zone name row -->
               <div class="flex items-center justify-between gap-xs mb-xs">
                 <div class="flex items-center gap-xs min-w-0">
                   <span class="material-symbols-outlined text-teal-600 text-sm flex-shrink-0">anchor</span>
@@ -297,10 +300,10 @@
                 </button>
               </div>
 
-              <!-- BAP type + value input -->
+              <!-- BAP type and value -->
               <div class="grid grid-cols-2 gap-xs">
 
-                <!-- BAP type segmented toggle -->
+                <!-- BAP type toggle -->
                 <div>
                   <label class="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">
                     {{ 'di.params.bap_type' | translate }}
@@ -325,7 +328,7 @@
                   </div>
                 </div>
 
-                <!-- Value input -->
+                <!-- Value input (continuous) -->
                 <div *ngIf="zone.bap_type === 'continuous'">
                   <label class="text-[10px] uppercase tracking-wide block mb-1"
                          [ngClass]="submitted && (zone.noray_max === null || zone.noray_max < 1) ? 'text-red-500' : 'text-slate-500'">
@@ -341,6 +344,7 @@
                          placeholder="—">
                 </div>
 
+                <!-- Value input (discrete) -->
                 <div *ngIf="zone.bap_type === 'discrete'">
                   <label class="text-[10px] uppercase tracking-wide block mb-1"
                          [ngClass]="submitted && (zone.capacity === null || zone.capacity < 1) ? 'text-red-500' : 'text-slate-500'">
@@ -359,12 +363,13 @@
             </div>
           </div>
 
-          <!-- Add berth -->
+          <!-- Add berth controls -->
           <div *ngIf="hasResult" class="mt-sm">
             <div class="flex gap-xs">
               <input type="text" [(ngModel)]="newBerthId" (keyup.enter)="addBerth()" (input)="newBerthError = false"
                      [placeholder]="'di.params.add_berth_placeholder' | translate"
                      [attr.aria-label]="'di.params.add_berth' | translate"
+                     [attr.title]="'di.params.add_berth' | translate"
                      class="flex-1 rounded px-xs py-1 text-body-sm border focus:outline-none transition"
                      [ngClass]="newBerthError ? 'border-red-400 bg-red-50 focus:border-red-500' : 'border-slate-300 bg-white focus:border-teal-500'">
               <button type="button" (click)="addBerth()"
@@ -379,7 +384,7 @@
           </div>
         </div>
 
-        <!-- Validation error banner -->
+        <!-- Validation status -->
         <div *ngIf="submitted && paramErrors.length > 0"
              class="mt-lg rounded-lg border border-red-200 bg-red-50 p-md flex items-start gap-sm">
           <span class="material-symbols-outlined text-red-500 text-base flex-shrink-0 mt-0.5">error</span>

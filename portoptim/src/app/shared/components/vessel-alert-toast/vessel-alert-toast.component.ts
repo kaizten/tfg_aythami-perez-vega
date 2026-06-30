@@ -2,33 +2,30 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { VesselAlert, VesselAlertService } from '../../../core/services/vessel-alert.service';
 
+/* Fixed - auto-dismiss duration for each toast entry in milliseconds */
 const TOAST_DURATION_MS = 6000;
+/* Fixed - CSS transition duration for the slide animation; must match the SCSS value */
 const SLIDE_DURATION_MS = 320;
 
-// ── Internal entry type ───────────────────────────────────────────────────────
-
 interface ToastEntry {
+  /* Fixed - the vessel alert data this entry displays */
   alert:        VesselAlert;
+  /* Computed - controls DOM presence for this entry */
   visible:      boolean;
+  /* Computed - CSS slide state flag for this entry */
   sliding:      boolean;
+  /* Computed - true while the progress bar is present in the DOM for this entry */
   progressing:  boolean;
+  /* Computed - triggers the drain transition to animate the progress bar */
   draining:     boolean;
-  /** Formatted expiration time string, e.g. "14:35". */
+  /* Computed - formatted expiration time string shown in the toast */
   expiresLabel: string;
+  /* Computed - handle for the auto-dismiss setTimeout for this entry */
   autoTimer?:   ReturnType<typeof setTimeout>;
+  /* Computed - handle for the slide-out setTimeout for this entry */
   slideTimer?:  ReturnType<typeof setTimeout>;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
-/**
- * Global vessel-alert toast container.
- *
- * Each new alert received from `VesselAlertService.newAlert$` is appended as
- * an independent entry in `toasts[]`. Entries stack vertically (newest at the
- * bottom) and each has its own slide animation, progress bar and auto-dismiss
- * timer — simultaneous alerts are all visible at once.
- */
 @Component({
   selector: 'app-vessel-alert-toast',
   standalone: false,
@@ -37,28 +34,46 @@ interface ToastEntry {
 })
 export class VesselAlertToastComponent implements OnInit, OnDestroy {
 
+  /* Computed - list of currently active toast entries rendered in the template */
   toasts: ToastEntry[] = [];
 
+  /* Computed - list of active RxJS subscriptions to clean up on destroy */
   private subs: Subscription[] = [];
 
   constructor(private alertSvc: VesselAlertService) {}
 
+  /*
+   * Subscribes to VesselAlertService.newAlert$ and adds a new toast entry for each incoming alert.
+   */
   ngOnInit(): void {
     this.subs.push(
       this.alertSvc.newAlert$.subscribe(alert => this._addToast(alert))
     );
   }
 
-  // ── Public actions ────────────────────────────────────────────────────────────
-
+  /*
+   * Slides out and removes the given toast entry.
+   * @param entry - The toast entry to dismiss (required)
+   */
   dismiss(entry: ToastEntry): void {
     this._slideOut(entry);
   }
 
+  /*
+   * TrackBy function for the toasts ngFor loop to minimise DOM re-renders.
+   * @param _ - Index parameter (unused) (required)
+   * @param entry - The toast entry being tracked (required)
+   * @returns The unique alert ID of the entry
+   */
   trackByAlert(_: number, entry: ToastEntry): string {
     return entry.alert.id;
   }
 
+  /*
+   * Formats a Unix millisecond timestamp as a zero-padded HH:MM time string.
+   * @param ms - Unix timestamp in milliseconds to format (required)
+   * @returns Zero-padded HH:MM string
+   */
   formatTime(ms: number): string {
     const d  = new Date(ms);
     const hh = d.getHours().toString().padStart(2, '0');
@@ -66,10 +81,12 @@ export class VesselAlertToastComponent implements OnInit, OnDestroy {
     return `${hh}:${mm}`;
   }
 
-  // ── Private ───────────────────────────────────────────────────────────────────
-
+  /*
+   * Appends a new toast entry for the given alert and starts its slide-in animation and auto-dismiss timer.
+   * If a toast for the same alert ID already exists, only its timer is restarted.
+   * @param alert - The vessel alert to display (required)
+   */
   private _addToast(alert: VesselAlert): void {
-    // If already toasting the same alert ID, just restart its timer.
     const existing = this.toasts.find(t => t.alert.id === alert.id);
     if (existing) {
       clearTimeout(existing.autoTimer);
@@ -88,7 +105,6 @@ export class VesselAlertToastComponent implements OnInit, OnDestroy {
 
     this.toasts.push(entry);
 
-    // Kick off slide-in on the next tick so Angular has rendered the element.
     setTimeout(() => {
       entry.sliding     = true;
       entry.progressing = true;
@@ -98,6 +114,10 @@ export class VesselAlertToastComponent implements OnInit, OnDestroy {
     entry.autoTimer = setTimeout(() => this._slideOut(entry), TOAST_DURATION_MS);
   }
 
+  /*
+   * Plays the slide-out animation for the given entry and removes it from the toasts array afterwards.
+   * @param entry - The toast entry to slide out and remove (required)
+   */
   private _slideOut(entry: ToastEntry): void {
     clearTimeout(entry.autoTimer);
     entry.sliding     = false;
@@ -109,8 +129,9 @@ export class VesselAlertToastComponent implements OnInit, OnDestroy {
     }, SLIDE_DURATION_MS);
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────
-
+  /*
+   * Clears all pending timers and unsubscribes from all active subscriptions on component destruction.
+   */
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
     this.toasts.forEach(t => {

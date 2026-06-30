@@ -1,12 +1,4 @@
-"""
-Duration estimator — three-layer fallback strategy.
-
-Layer 1 (most precise): rate model  →  duration = cantidad / median_rate
-Layer 2 (fallback):     statistical  →  median duration by (tipo_op, grupo, eslora_bucket)
-Layer 3 (last resort):  default      →  configurable constant (default 48 h)
-
-Multiple operations are summed and then multiplied by overlap_factor (≤1).
-"""
+"""Duration estimator using a three-layer fallback strategy: rate model, statistical model, then default."""
 
 from __future__ import annotations
 
@@ -19,25 +11,43 @@ from .models import VesselOperation
 
 logger = structlog.get_logger()
 
+# Fixed - priority ordering for duration source labels (lower value = more precise)
 _SOURCE_PRIORITY = {"provided": 0, "rate_model": 1, "statistical_model": 2, "default": 3}
 
 
 class DurationEstimator:
+    """
+    Estimates vessel service duration using a three-layer fallback strategy.
+
+    Layer 1 (most precise): rate model — duration = cantidad / median_rate.
+    Layer 2 (fallback): statistical model — median duration by (tipo_op, grupo, eslora_bucket).
+    Layer 3 (last resort): configurable default constant.
+    Multiple operations are summed and multiplied by overlap_factor.
+    """
+
     def __init__(
         self,
         calibration: Optional[Calibration] = None,
         default_duration_h: float = 48.0,
         overlap_factor: float = 0.70,
     ) -> None:
+        """
+        Initialize the estimator with optional calibration and fallback parameters.
+
+        Args:
+            calibration (Calibration): Fitted calibration object providing rate and duration models. Optional, defaults to None.
+            default_duration_h (float): Duration in hours used as last-resort fallback. Optional, defaults to 48.0.
+            overlap_factor (float): Fraction applied to summed multi-operation durations. Optional, defaults to 0.70.
+        """
+        # User-provided - fitted calibration object, or None to use default fallback only
         self.calibration = calibration
+        # User-provided - last-resort duration in hours when no model is available
         self.default_duration_h = default_duration_h
-        # Prefer the learned overlap factor when calibration is available
+        # Computed - overlap factor, preferring the learned value from calibration when available
         if calibration and calibration.overlap_factor_learned is not None:
             self.overlap_factor = calibration.overlap_factor_learned
         else:
             self.overlap_factor = overlap_factor
-
-    # ── Public API ─────────────────────────────────────────────────────────────
 
     def estimate(
         self,
@@ -46,8 +56,16 @@ class DurationEstimator:
         estimated_duration_h: Optional[float] = None,
     ) -> tuple[float, str]:
         """
-        Returns (duration_h, source) where source is one of:
-            "provided" | "rate_model" | "statistical_model" | "default"
+        Estimate the service duration for a vessel given its operations.
+
+        Args:
+            eslora (float): Vessel length in metres, used for statistical model lookup. Required.
+            operations (list[VesselOperation]): List of cargo operations the vessel will perform. Required.
+            estimated_duration_h (float): Pre-calculated duration provided by the caller; bypasses all model layers when set. Optional, defaults to None.
+
+        Returns:
+            tuple[float, str]: Pair of (duration_h, source) where source is one of
+                "provided", "rate_model", "statistical_model", or "default".
         """
         if estimated_duration_h is not None:
             logger.info("duration_provided", eslora=eslora, duration_h=estimated_duration_h)
@@ -64,9 +82,8 @@ class DurationEstimator:
         if len(operations) == 1:
             return self._estimate_single(operations[0], eslora)
 
-        # Multiple operations: sum individual estimates then apply overlap factor
         total = 0.0
-        worst_source = "rate_model"  # will be updated to least-precise source seen
+        worst_source = "rate_model"
         for op in operations:
             d, s = self._estimate_single(op, eslora)
             total += d
@@ -85,11 +102,19 @@ class DurationEstimator:
         )
         return combined, worst_source
 
-    # ── Internals ──────────────────────────────────────────────────────────────
-
     def _estimate_single(
         self, op: VesselOperation, eslora: float
     ) -> tuple[float, str]:
+        """
+        Estimate duration for a single cargo operation using the three-layer fallback.
+
+        Args:
+            op (VesselOperation): The cargo operation to estimate. Required.
+            eslora (float): Vessel length in metres for statistical model lookup. Required.
+
+        Returns:
+            tuple[float, str]: Pair of (duration_h, source).
+        """
         if self.calibration is None:
             logger.warning(
                 "duration_default_no_calibration",
@@ -99,7 +124,6 @@ class DurationEstimator:
             )
             return self.default_duration_h, "default"
 
-        # Layer 1 — rate model
         if op.cantidad is not None and op.cantidad > 0:
             rate = self.calibration.get_rate(op.tipo_operacion, op.grupo_mercancia)
             if rate and rate > 0:
@@ -114,7 +138,6 @@ class DurationEstimator:
                 )
                 return dur, "rate_model"
 
-        # Layer 2 — statistical model
         dur = self.calibration.get_duration(op.tipo_operacion, op.grupo_mercancia, eslora)
         if dur is not None:
             logger.info(
@@ -126,7 +149,6 @@ class DurationEstimator:
             )
             return dur, "statistical_model"
 
-        # Layer 3 — default
         logger.warning(
             "duration_default_fallback",
             tipo=op.tipo_operacion,

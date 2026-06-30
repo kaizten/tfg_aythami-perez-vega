@@ -1,10 +1,11 @@
 <div class="bg-white rounded-xl border border-outline-variant shadow-card flex flex-col h-full">
+  <!-- Card header -->
   <div class="p-lg border-b border-slate-100">
     <h3 class="text-h3 font-semibold text-on-surface">{{ 'alerts.title' | translate }}</h3>
   </div>
 
+  <!-- Alert list -->
   <div class="p-lg space-y-md flex-1">
-    <!-- Critical alert -->
     <div class="p-md bg-red-50 rounded-lg border border-red-100">
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-error">priority_high</span>
@@ -18,7 +19,6 @@
       </div>
     </div>
 
-    <!-- Info alert -->
     <div class="p-md bg-teal-50 rounded-lg border border-teal-100">
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-on-secondary-container">anchor</span>
@@ -32,7 +32,6 @@
       </div>
     </div>
 
-    <!-- Notice -->
     <div class="p-md border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
       <div class="flex gap-md">
         <span class="material-symbols-outlined text-slate-400">info</span>
@@ -44,6 +43,7 @@
     </div>
   </div>
 
+  <!-- View all action -->
   <div class="p-lg pt-0">
     <button type="button" class="w-full py-md text-xs font-bold text-on-surface-variant bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors">
       {{ 'alerts.view_all' | translate }}

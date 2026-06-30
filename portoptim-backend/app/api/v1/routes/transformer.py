@@ -13,11 +13,20 @@ from app.utils.csv_reader import read_file
 
 logger = logging.getLogger(__name__)
 
+# Fixed - FastAPI router for transformation endpoints, mounted under /transform
 router = APIRouter(prefix="/transform", tags=["transformer"])
 
 
 def _build_response(result: TransformationResult) -> dict[str, Any]:
-    """Serialise a TransformationResult into the JSON response shape."""
+    """
+    Serialise a TransformationResult into the JSON response shape expected by the frontend.
+
+    Args:
+        result (TransformationResult): Output from the transformation pipeline. Required.
+
+    Returns:
+        dict[str, Any]: Dictionary with transformation_summary, available_ports, and data fields.
+    """
     return {
         "transformation_summary": {
             "total_input_rows": result.summary.total_input_rows,
@@ -44,18 +53,18 @@ async def transform_dataset(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> JSONResponse:
     """
-    Receive an uploaded file, run the transformation pipeline, and return results.
+    POST /api/v1/transform/ — receive an uploaded file, run the transformation pipeline, and return results.
 
     Args:
-        file: The multipart-uploaded CSV or Excel file.
-        settings: Injected application settings.
+        file (UploadFile): The multipart-uploaded CSV or Excel file. Required.
+        settings (Settings): Injected application settings. Required.
 
     Returns:
-        JSON with ``transformation_summary`` and ``data`` fields.
+        JSONResponse: HTTP 200 with transformation_summary, available_ports, and data fields.
 
     Raises:
         FileTooLargeError: File exceeds the configured size limit.
-        InvalidFileError: File cannot be parsed (bad format or encoding).
+        InvalidFileError: File cannot be parsed due to bad format or encoding.
         TransformationError: Pipeline fails due to missing required columns.
     """
     content = await file.read()

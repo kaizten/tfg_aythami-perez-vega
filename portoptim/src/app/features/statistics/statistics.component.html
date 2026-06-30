@@ -1,6 +1,6 @@
 <div class="p-margin bg-background">
 
-  <!-- ── Empty state ─────────────────────────────────────────────────────── -->
+  <!-- Empty state -->
   <div *ngIf="!hasData" class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-lg">
     <div class="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
       <span class="material-symbols-outlined text-4xl text-on-surface-variant">bar_chart</span>
@@ -16,17 +16,17 @@
     </div>
   </div>
 
-  <!-- ── Loaded state ────────────────────────────────────────────────────── -->
+  <!-- Loaded state -->
   <ng-container *ngIf="hasData">
 
-    <!-- Header -->
+    <!-- Page header -->
     <div class="flex justify-between items-center mb-xl">
       <div>
         <h3 class="text-h1 font-bold text-on-surface">{{ 'stats.title' | translate }}</h3>
         <p class="text-body-md text-on-surface-variant mt-xs">{{ 'stats.subtitle' | translate }}</p>
       </div>
 
-      <!-- Data-source toggle — only shown when optimizer has been run -->
+      <!-- Data source toggle -->
       <div *ngIf="hasOptimizerResult"
            class="flex bg-surface-container-low border border-outline-variant rounded-xl p-1 gap-1">
         <button type="button" (click)="setDataSource('csv')"
@@ -48,12 +48,10 @@
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════════════
-         CSV DATA VIEW
-         ══════════════════════════════════════════════════════════════════════ -->
+    <!-- CSV data view -->
     <ng-container *ngIf="dataSource === 'csv'">
 
-    <!-- ── KPI Cards ──────────────────────────────────────────────────────── -->
+    <!-- KPI metric cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
       <div *ngFor="let kpi of kpis"
            class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
@@ -70,10 +68,9 @@
       </div>
     </div>
 
-    <!-- ── Duración Media + Volumen de Carga (ventana compartida) ─────────── -->
+    <!-- Average duration and cargo volume chart -->
     <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-      <!-- Dual header -->
       <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200 border-b border-slate-200 bg-slate-50/50">
         <div class="px-lg py-md flex justify-between items-center">
           <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -91,7 +88,7 @@
         </div>
       </div>
 
-      <!-- Shared window navigation -->
+      <!-- Window navigation -->
       <div class="px-lg py-sm border-b border-slate-100 flex items-center gap-md bg-white">
         <button type="button" (click)="prevDurWindow()"
                 [disabled]="durWindowStart <= 0"
@@ -111,10 +108,9 @@
         </span>
       </div>
 
-      <!-- Dual bars -->
+      <!-- Dual bar chart body -->
       <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
 
-        <!-- Duración -->
         <div class="p-lg space-y-sm">
           <div *ngFor="let m of durWindowMonths" class="flex items-center gap-md">
             <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
@@ -135,7 +131,6 @@
           <p *ngIf="!durWindowMonths.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
         </div>
 
-        <!-- Volumen de carga -->
         <div class="p-lg space-y-sm">
           <div *ngFor="let m of durWindowMonths" class="flex items-center gap-md">
             <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
@@ -160,10 +155,10 @@
       </div>
     </div>
 
-    <!-- ── Detalle mensual: Ocupación + Operaciones + Grupo Mercancía ─────── -->
+    <!-- Monthly detail: berth occupancy, operation types, cargo groups -->
     <div *ngIf="selectedMonth" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-      <!-- Month navigation header -->
+      <!-- Month navigation -->
       <div class="px-lg py-md border-b border-slate-200 flex items-center gap-md bg-slate-50/50">
         <button type="button" (click)="prevMonth()"
                 [disabled]="selectedMonthIndex <= 0"
@@ -185,10 +180,10 @@
         </button>
       </div>
 
-      <!-- Three-column content -->
+      <!-- Three-column breakdown -->
       <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
 
-        <!-- Ocupación de Muelles -->
+        <!-- Berth occupancy -->
         <div class="p-lg">
           <h5 class="text-h3 font-semibold text-on-surface mb-xs flex items-center gap-sm">
             <span class="material-symbols-outlined text-teal-600">dock</span>
@@ -217,7 +212,7 @@
           </div>
         </div>
 
-        <!-- Tipos de Operación -->
+        <!-- Operation types -->
         <div class="p-lg">
           <div class="flex items-start justify-between mb-xs">
             <h5 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -248,7 +243,7 @@
           </div>
         </div>
 
-        <!-- Grupo de Mercancía -->
+        <!-- Cargo groups -->
         <div class="p-lg">
           <h5 class="text-h3 font-semibold text-on-surface mb-xs flex items-center gap-sm">
             <span class="material-symbols-outlined text-teal-600">local_shipping</span>
@@ -276,7 +271,7 @@
       </div>
     </div>
 
-    <!-- ── Distribución de Llegadas y Salidas por Hora ──────────────────────── -->
+    <!-- Hourly arrival and departure distribution chart -->
     <div *ngIf="arrivalHours.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
       <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -288,7 +283,7 @@
 
       <div class="px-lg pt-lg pb-sm">
 
-        <!-- Legend -->
+        <!-- Chart legend -->
         <div class="flex items-center gap-lg mb-md">
           <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
             <span class="w-3 h-3 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
@@ -300,12 +295,12 @@
           </span>
         </div>
 
-        <!-- Overlapping vertical bars (mirrors optimizer chart) -->
+        <!-- Vertical bars per hour -->
         <div class="flex items-end gap-0.5 h-36 overflow-visible">
           <div *ngFor="let h of arrivalHours"
                class="flex-1 min-w-0 h-full relative group cursor-default">
 
-            <!-- Tooltip -->
+            <!-- Hover tooltip -->
             <div *ngIf="h.arrivalCount > 0 || h.departureCount > 0"
                  class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50
                         opacity-0 group-hover:opacity-100 transition-opacity duration-150
@@ -330,28 +325,25 @@
               </div>
             </div>
 
-            <!-- Empty hour -->
             <div *ngIf="h.arrivalCount === 0 && h.departureCount === 0"
                  class="absolute bottom-0 left-0 right-0 bg-slate-200 rounded-t-sm h-[2%]"></div>
-            <!-- Arrivals (sky blue — behind) -->
             <div *ngIf="h.arrivalCount > 0"
                  class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-sky-500"
                  [style.height]="h.arrivalPct + '%'"></div>
-            <!-- Departures (violet — in front, 80% opacity) -->
             <div *ngIf="h.departureCount > 0"
                  class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-violet-500 opacity-80"
                  [style.height]="h.departurePct + '%'"></div>
           </div>
         </div>
 
-        <!-- Hour labels -->
+        <!-- Hour axis labels -->
         <div class="flex gap-0.5 mt-xs">
           <div *ngFor="let h of arrivalHours" class="flex-1 min-w-0 text-center">
             <span class="text-[9px] text-on-surface-variant leading-none">{{ padHour(h.hour) }}</span>
           </div>
         </div>
 
-        <!-- Peak summary (arrivals + departures) -->
+        <!-- Peak hour summary -->
         <div class="flex justify-center gap-xl mt-md pt-md border-t border-slate-100">
           <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
             <span class="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
@@ -376,15 +368,12 @@
     </div>
 
     </ng-container>
-    <!-- ── end CSV DATA VIEW ─────────────────────────────────────────────── -->
 
 
-    <!-- ══════════════════════════════════════════════════════════════════════
-         OPTIMIZER RESULTS VIEW
-         ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Optimizer results view -->
     <ng-container *ngIf="dataSource === 'optimizer'">
 
-      <!-- ── 1. KPI Cards (same layout as CSV) ─────────────────────────────── -->
+      <!-- Optimizer KPI metric cards -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
         <div *ngFor="let kpi of optiKpis"
              class="bg-white p-lg rounded-xl shadow-card border border-slate-200 flex flex-col justify-between">
@@ -399,10 +388,9 @@
         </div>
       </div>
 
-      <!-- ── 2. Avg. Duration by month + Cargo by month (mirrors CSV chart) ── -->
+      <!-- Optimizer average duration and cargo by month chart -->
       <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-        <!-- Dual header -->
         <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200 border-b border-slate-200 bg-slate-50/50">
           <div class="px-lg py-md flex justify-between items-center">
             <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -420,7 +408,7 @@
           </div>
         </div>
 
-        <!-- Shared window navigation (mirrors CSV) -->
+        <!-- Window navigation -->
         <div class="px-lg py-sm border-b border-slate-100 flex items-center gap-md bg-white">
           <button type="button" (click)="prevOptiMonthWindow()"
                   [disabled]="optiMonthWindowStart <= 0"
@@ -440,10 +428,9 @@
           </span>
         </div>
 
-        <!-- Dual bars -->
+        <!-- Dual bar chart body -->
         <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
 
-          <!-- Avg duration per month -->
           <div class="p-lg space-y-sm">
             <div *ngFor="let m of optiMonthWindow" class="flex items-center gap-md">
               <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
@@ -463,7 +450,6 @@
             <p *ngIf="!optiMonths.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
           </div>
 
-          <!-- Cargo per month -->
           <div class="p-lg space-y-sm">
             <div *ngFor="let m of optiMonthWindow" class="flex items-center gap-md">
               <span class="text-body-sm text-on-surface-variant w-24 truncate flex-shrink-0 text-right pr-sm">
@@ -486,10 +472,10 @@
         </div>
       </div>
 
-      <!-- ── 3. Berth occupancy + Op types + Cargo groups (mirrors CSV 3-col) ── -->
+      <!-- Optimizer monthly detail: berth occupancy, operation types, cargo groups -->
       <div *ngIf="optiSelectedMonth" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-        <!-- Month navigation header (mirrors CSV month navigation) -->
+        <!-- Month navigation -->
         <div class="px-lg py-md border-b border-slate-200 flex items-center gap-md bg-slate-50/50">
           <button type="button" (click)="prevOptiMonth()"
                   [disabled]="optiSelectedMonthIndex <= 0"
@@ -511,7 +497,7 @@
           </button>
         </div>
 
-        <!-- Three columns -->
+        <!-- Three-column breakdown -->
         <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
 
           <!-- Berth occupancy -->
@@ -582,7 +568,7 @@
         </div>
       </div>
 
-      <!-- ── 4. Docking & undocking phase-start distribution ──────────────── -->
+      <!-- Docking and undocking phase-start hourly distribution chart -->
       <div *ngIf="optiScheduledHours.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
         <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
           <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -593,7 +579,7 @@
         </div>
         <div class="px-lg pt-lg pb-sm">
 
-          <!-- Legend -->
+          <!-- Chart legend -->
           <div class="flex items-center gap-lg mb-md">
             <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
               <span class="w-3 h-3 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
@@ -605,23 +591,21 @@
             </span>
           </div>
 
-          <!-- Overlapping vertical bars -->
+          <!-- Vertical bars per hour -->
           <div class="flex items-end gap-0.5 h-36 overflow-visible">
             <div *ngFor="let h of optiScheduledHours"
                  class="flex-1 min-w-0 h-full relative group cursor-default">
 
-              <!-- ── Custom tooltip ──────────────────────────────────────── -->
+              <!-- Hover tooltip -->
               <div *ngIf="h.atraqueCount > 0 || h.desatraqueCount > 0"
                    class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50
                           opacity-0 group-hover:opacity-100 transition-opacity duration-150
                           pointer-events-none min-w-[130px]
                           bg-white border border-slate-200 rounded-xl shadow-lg px-sm py-xs">
-                <!-- Hour range header -->
                 <p class="text-[10px] font-semibold text-on-surface-variant text-center
                           pb-xs mb-xs border-b border-slate-100">
                   {{ padHour(h.hour) }}:00 – {{ h.hour + 1 < 24 ? padHour(h.hour + 1) : '00' }}:00
                 </p>
-                <!-- Atraque row -->
                 <div class="flex items-center justify-between gap-sm">
                   <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
                     <span class="w-2 h-2 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
@@ -629,7 +613,6 @@
                   </span>
                   <strong class="text-[11px] text-on-surface">{{ h.atraqueCount }}</strong>
                 </div>
-                <!-- Desatraque row -->
                 <div class="flex items-center justify-between gap-sm mt-xs">
                   <span class="flex items-center gap-xs text-[11px] text-on-surface-variant">
                     <span class="w-2 h-2 rounded-sm bg-violet-500 inline-block flex-shrink-0 opacity-80"></span>
@@ -639,29 +622,26 @@
                 </div>
               </div>
 
-              <!-- ── Bars ────────────────────────────────────────────────── -->
-              <!-- Empty-hour indicator -->
+              <!-- Bar segments -->
               <div *ngIf="h.atraqueCount === 0 && h.desatraqueCount === 0"
                    class="phase-bar-empty absolute bottom-0 left-0 right-0 bg-slate-200 rounded-t-sm"></div>
-              <!-- Atraque bar (sky blue — behind) -->
               <div *ngIf="h.atraqueCount > 0"
                    class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-sky-500"
                    [style.height]="h.atraquePct + '%'"></div>
-              <!-- Desatraque bar (violet — in front, 80% opacity so blue shows through overlap) -->
               <div *ngIf="h.desatraqueCount > 0"
                    class="absolute bottom-0 left-0 right-0 rounded-t-sm transition-all bg-violet-500 opacity-80"
                    [style.height]="h.desatraquePct + '%'"></div>
             </div>
           </div>
 
-          <!-- Hour labels -->
+          <!-- Hour axis labels -->
           <div class="flex gap-0.5 mt-xs">
             <div *ngFor="let h of optiScheduledHours" class="flex-1 min-w-0 text-center">
               <span class="text-[9px] text-on-surface-variant leading-none">{{ padHour(h.hour) }}</span>
             </div>
           </div>
 
-          <!-- Footer: peak hour per phase -->
+          <!-- Peak hour summary per phase -->
           <div class="flex justify-center gap-xl mt-md pt-md border-t border-slate-100">
             <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
               <span class="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block flex-shrink-0"></span>
@@ -686,10 +666,10 @@
         </div>
       </div>
 
-      <!-- ── 5. [EXTRA] Operation Phases + Anchorage by berth ─────────────────── -->
+      <!-- Operation phase breakdown and anchorage by berth -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-lg mb-xl">
 
-        <!-- Phase breakdown -->
+        <!-- Phase duration breakdown -->
         <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
           <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
             <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -714,7 +694,7 @@
           </div>
         </div>
 
-        <!-- Anchorage hours per berth -->
+        <!-- Anchorage wait hours per berth -->
         <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden">
           <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
             <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -741,7 +721,7 @@
         </div>
       </div>
 
-      <!-- ── 5b. [EXTRA] Anchorage Wait Distribution — vertical bars ────────── -->
+      <!-- Anchorage wait time distribution chart -->
       <div *ngIf="optiWaitBuckets.length" class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
         <div class="px-lg py-md border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
           <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -755,26 +735,23 @@
           <div class="flex items-end gap-lg h-40">
             <div *ngFor="let w of optiWaitBuckets"
                  class="flex-1 flex flex-col items-center justify-end h-full gap-xs">
-              <!-- Count label above bar -->
               <span class="text-body-sm font-bold text-on-surface">{{ w.count }}</span>
-              <!-- Bar -->
               <div class="w-full rounded-t-md transition-all bg-amber-400"
                    [style.height]="(w.barPct || 1) + '%'"></div>
             </div>
           </div>
-          <!-- Short labels below bars -->
+          <!-- Bucket labels -->
           <div class="flex gap-lg mt-sm">
             <div *ngFor="let w of optiWaitBuckets" class="flex-1 text-center">
               <span class="text-[11px] text-on-surface-variant font-medium leading-none">{{ w.shortLabel }}</span>
             </div>
           </div>
-          <!-- Long labels (translated) below -->
           <div class="flex gap-lg mt-xs">
             <div *ngFor="let w of optiWaitBuckets" class="flex-1 text-center">
               <span class="text-[10px] text-on-surface-variant leading-none">{{ w.labelKey | translate }}</span>
             </div>
           </div>
-          <!-- Peak summary -->
+          <!-- Average wait summary -->
           <div class="flex justify-center mt-md pt-md border-t border-slate-100">
             <p class="text-body-sm text-on-surface-variant">
               {{ 'stats.opt.wait.avg' | translate }}:
@@ -784,10 +761,10 @@
         </div>
       </div>
 
-      <!-- ── 6. [EXTRA] Duration sources + Schedule changes ──────────────────── -->
+      <!-- Duration sources and schedule change breakdown -->
       <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-        <!-- Duration Sources header -->
+        <!-- Duration sources header -->
         <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
           <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
             <span class="material-symbols-outlined text-teal-600">model_training</span>
@@ -796,7 +773,7 @@
           <p class="text-body-sm text-on-surface-variant hidden lg:block">{{ 'stats.opt.dur_source.hint' | translate }}</p>
         </div>
 
-        <!-- Duration sources rows -->
+        <!-- Duration source bars -->
         <div class="p-lg space-y-sm">
           <div *ngFor="let ds of optiDurSources" class="flex items-center gap-md">
             <span class="text-body-sm text-on-surface-variant w-28 truncate flex-shrink-0 text-right pr-sm">{{ ds.labelKey | translate }}</span>
@@ -809,10 +786,9 @@
           <p *ngIf="!optiDurSources.length" class="text-body-sm text-on-surface-variant text-center py-md">—</p>
         </div>
 
-        <!-- ── Schedule changes sub-section ─────────────────────────────────── -->
+        <!-- Schedule changes sub-section -->
         <div *ngIf="optiReplanChanges" class="border-t border-slate-100">
 
-          <!-- Sub-header -->
           <div class="px-lg py-sm bg-slate-50/50 flex justify-between items-center">
             <p class="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-xs">
               <span class="material-symbols-outlined text-base text-rose-500">sync_alt</span>
@@ -823,9 +799,6 @@
 
           <div class="px-lg pb-lg pt-sm space-y-sm">
 
-            <!-- Row helper: label / bar / count / % -->
-
-            <!-- Operation delay (amber — same colour as berth-delay segment) -->
             <div class="flex items-center gap-md">
               <div class="w-2.5 h-2.5 rounded-sm bg-amber-500 flex-shrink-0"></div>
               <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
@@ -844,7 +817,6 @@
               </span>
             </div>
 
-            <!-- Early completion (emerald — user-triggered, early_complete === true) -->
             <div class="flex items-center gap-md">
               <div class="w-2.5 h-2.5 rounded-sm bg-emerald-500 flex-shrink-0"></div>
               <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
@@ -863,7 +835,6 @@
               </span>
             </div>
 
-            <!-- Arrival delay (red — same colour as delay segment in Gantt) -->
             <div class="flex items-center gap-md">
               <div class="w-2.5 h-2.5 rounded-sm bg-red-500 flex-shrink-0"></div>
               <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
@@ -882,7 +853,6 @@
               </span>
             </div>
 
-            <!-- Early arrival (sky blue — vessels that arrived before their ETA) -->
             <div class="flex items-center gap-md">
               <div class="w-2.5 h-2.5 rounded-sm bg-sky-400 flex-shrink-0"></div>
               <span class="text-body-sm text-on-surface-variant w-36 truncate flex-shrink-0"
@@ -901,7 +871,6 @@
               </span>
             </div>
 
-            <!-- No-changes message when all are zero -->
             <p *ngIf="optiReplanChanges.operationDelay === 0 && optiReplanChanges.earlyComplete === 0 && optiReplanChanges.arrivalDelay === 0 && optiReplanChanges.earlyArrival === 0"
                class="text-body-sm text-on-surface-variant text-center py-xs">
               {{ 'stats.opt.replan.none' | translate }}
@@ -909,14 +878,12 @@
 
           </div>
         </div>
-        <!-- /schedule changes -->
 
       </div>
 
-      <!-- ── 7. [EXTRA] Resource Allocation by Month ───────────────────────── -->
+      <!-- Resource allocation by month -->
       <div class="bg-white rounded-xl shadow-card border border-slate-200 overflow-hidden mb-xl">
 
-        <!-- Header -->
         <div class="px-lg py-md border-b border-slate-200 bg-slate-50/50 flex justify-between items-start">
           <div>
             <h4 class="text-h3 font-semibold text-on-surface flex items-center gap-sm">
@@ -958,7 +925,7 @@
         <!-- Chart body -->
         <div class="p-lg">
 
-          <!-- Legend -->
+          <!-- Chart legend -->
           <div class="flex flex-wrap items-center gap-lg mb-lg">
             <span class="flex items-center gap-xs text-body-sm text-on-surface-variant">
               <span class="w-3 h-3 rounded-sm bg-teal-500 inline-block flex-shrink-0"></span>
@@ -970,7 +937,7 @@
             </span>
           </div>
 
-          <!-- ── Yearly peak summary ─────────────────────────────────────── -->
+          <!-- Yearly peak summary badges -->
           <div *ngIf="optiYearResources.length" class="mb-lg">
             <p class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-sm">
               {{ 'stats.opt.resources.year_peak' | translate }}
@@ -980,7 +947,6 @@
                    class="flex items-center gap-sm px-md py-sm bg-slate-50 border border-slate-200 rounded-lg flex-wrap">
                 <span class="text-label-sm font-bold text-on-surface">{{ y.year }}</span>
                 <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
-                <!-- True minimum = unconstrained peak demand (min fleet for zero waits) -->
                 <span class="flex items-center gap-xs text-body-sm"
                       [title]="'stats.opt.resources.peak_pilots_hint' | translate">
                   <span class="material-symbols-outlined text-sm text-teal-600">person</span>
@@ -994,7 +960,6 @@
                   <strong class="text-on-surface">{{ y.finalMinTugs }}</strong>
                   <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.tugs' | translate }}</span>
                 </span>
-                <!-- Pilot fondeo wait -->
                 <ng-container *ngIf="y.totalPilotWaitH > 0">
                   <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
                   <span class="flex items-center gap-xs text-body-sm"
@@ -1004,7 +969,6 @@
                     <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.pilot_wait' | translate }}</span>
                   </span>
                 </ng-container>
-                <!-- Tug fondeo wait -->
                 <ng-container *ngIf="y.totalTugWaitH > 0">
                   <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
                   <span class="flex items-center gap-xs text-body-sm"
@@ -1014,7 +978,6 @@
                     <span class="text-on-surface-variant text-[11px]">{{ 'stats.opt.resources.tug_wait' | translate }}</span>
                   </span>
                 </ng-container>
-                <!-- Total undocking wait -->
                 <ng-container *ngIf="y.totalWaitUndockH > 0">
                   <span class="w-px h-4 bg-slate-200 flex-shrink-0"></span>
                   <span class="flex items-center gap-xs text-body-sm"
@@ -1028,15 +991,14 @@
             </div>
           </div>
 
-          <!-- Month groups (horizontal bars) -->
+          <!-- Monthly resource bars -->
           <div class="space-y-lg">
             <ng-container *ngFor="let m of optiResourceWindow">
               <div class="space-y-xs">
 
-                <!-- Month label -->
                 <p class="text-label-sm font-semibold text-on-surface">{{ monthLabel(m.year, m.month) }}</p>
 
-                <!-- Pilots row (true minimum = unconstrained peak demand) -->
+                <!-- Pilots row -->
                 <div class="flex items-center gap-md">
                   <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
                     <span class="material-symbols-outlined text-sm text-teal-600">person</span>
@@ -1052,7 +1014,7 @@
                   </span>
                 </div>
 
-                <!-- Tugs row (true minimum = unconstrained peak demand) -->
+                <!-- Tugs row -->
                 <div class="flex items-center gap-md">
                   <span class="flex items-center justify-end gap-xs text-body-sm text-on-surface-variant w-28 flex-shrink-0 pr-sm">
                     <span class="material-symbols-outlined text-sm text-sky-500">directions_boat</span>
@@ -1068,7 +1030,7 @@
                   </span>
                 </div>
 
-                <!-- Resource fondeo wait (only shown when > 0) -->
+                <!-- Resource wait indicators -->
                 <div *ngIf="m.pilotWaitH > 0 || m.tugWaitH > 0" class="flex items-center gap-sm pl-[7.5rem] flex-wrap">
                   <span *ngIf="m.pilotWaitH > 0"
                         class="flex items-center gap-xs text-[11px] text-amber-600"
@@ -1092,7 +1054,6 @@
       </div>
 
     </ng-container>
-    <!-- ── end OPTIMIZER RESULTS VIEW ────────────────────────────────────── -->
 
   </ng-container>
 

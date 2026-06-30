@@ -4,6 +4,7 @@ import { Subject, Subscription, debounceTime, distinctUntilChanged, interval } f
 import { AisStreamService, AisVesselPosition } from '../../services/ais-stream.service';
 import { MapStateService } from '../../../../core/map-state.service';
 
+/* Fixed - mapping from AIS navigational status code to human-readable label */
 const NAV_LABELS: Record<number, string> = {
   0:  'Under way (engine)',
   1:  'At anchor',
@@ -17,6 +18,11 @@ const NAV_LABELS: Record<number, string> = {
   15: 'Not defined',
 };
 
+/*
+ * Returns a hex color string representing a vessel marker based on its navigational status.
+ * @param status - AIS navigational status code, or null if unknown (required)
+ * @returns Hex color string for the vessel icon fill
+ */
 function vesselColor(status: number | null): string {
   switch (status) {
     case 0: case 8: return '#22c55e';
@@ -26,6 +32,12 @@ function vesselColor(status: number | null): string {
   }
 }
 
+/*
+ * Builds a Leaflet DivIcon containing an SVG vessel shape rotated to the given heading.
+ * @param heading - True heading in degrees, or null to use 0 degrees (required)
+ * @param navStatus - AIS navigational status used to determine icon color (required)
+ * @returns Configured Leaflet DivIcon ready to attach to a marker
+ */
 function buildIcon(heading: number | null, navStatus: number | null): L.DivIcon {
   const color = vesselColor(navStatus);
   const deg   = heading ?? 0;
@@ -38,6 +50,7 @@ function buildIcon(heading: number | null, navStatus: number | null): L.DivIcon 
 }
 
 interface VesselTrack { marker: L.Marker; lastSeen: number; latlng: L.LatLng; }
+/* Fixed - milliseconds after which a vessel without a position update is considered stale */
 const STALE_MS = 10 * 60 * 1_000;
 
 type MapMode = 'satellite' | 'street';
@@ -56,28 +69,45 @@ export interface NominatimResult {
   styleUrl: './terminal-map.component.scss',
 })
 export class TerminalMapComponent implements AfterViewInit, OnDestroy {
+  /* User-provided - reference to the native map container element obtained via ViewChild */
   @ViewChild('mapEl') private mapEl!: ElementRef<HTMLDivElement>;
 
+  /* Computed - currently active tile layer mode, either satellite or street */
   mapMode: MapMode = 'street';
 
+  /* Computed - Leaflet map instance created after the view is initialized */
   private map!: L.Map;
+  /* Computed - Esri World Imagery tile layer for satellite mode */
   private satelliteLayer!: L.TileLayer;
+  /* Computed - CartoDB labels overlay displayed on top of the satellite layer */
   private labelsLayer!: L.TileLayer;
+  /* Computed - OpenStreetMap tile layer for street mode */
   private streetLayer!: L.TileLayer;
+  /* Computed - live map of MMSI to vessel track data for all currently displayed vessels */
   private vessels = new Map<number, VesselTrack>();
+  /* Computed - composite subscription collecting all active RxJS subscriptions */
   private subs    = new Subscription();
+  /* Computed - ResizeObserver that invalidates map size when the container is resized */
   private resizeObserver!: ResizeObserver;
+  /* Computed - Subject that debounces search input keystrokes before firing autocomplete requests */
   private readonly searchSubject = new Subject<string>();
+  /* Computed - Subject that debounces map move events before sending the bounding box to the backend */
   private readonly bboxSubject   = new Subject<void>();
 
-  // Search state
+  /* Computed - current list of location autocomplete suggestions from Nominatim */
   suggestions: NominatimResult[] = [];
+  /* Computed - whether the suggestions dropdown is currently visible */
   showSuggestions = false;
+  /* Computed - whether a Nominatim request is currently in-flight */
   searching       = false;
+  /* Computed - whether the last search returned no results */
   searchNotFound  = false;
 
   constructor(readonly ais: AisStreamService, private readonly mapState: MapStateService) {}
 
+  /*
+   * Initializes the Leaflet map, tile layers, ResizeObserver, and AIS subscription after the view is ready.
+   */
   ngAfterViewInit(): void {
     const el = this.mapEl.nativeElement;
 
@@ -126,7 +156,6 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('moveend', () => this.onMapMoved());
 
-    // Send bbox to backend only after user stops moving for 1 s
     this.subs.add(
       this.bboxSubject.pipe(debounceTime(1000))
         .subscribe(() => {
@@ -137,7 +166,6 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
         })
     );
 
-    // Debounced autocomplete — 350 ms after the user stops typing
     this.subs.add(
       this.searchSubject.pipe(debounceTime(350), distinctUntilChanged())
         .subscribe(q => this.fetchSuggestions(q))
@@ -149,6 +177,10 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.subs.add(interval(60_000).subscribe(() => this.purgeStale()));
   }
 
+  /*
+   * Switches between satellite and street tile layers without reloading the page.
+   * @param mode - The desired map mode: 'satellite' or 'street' (required)
+   */
   setMapMode(mode: MapMode): void {
     if (mode === this.mapMode) return;
     this.mapMode = mode;
@@ -163,6 +195,9 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /*
+   * Persists the current map viewport to MapStateService, disconnects the ResizeObserver, and removes the map.
+   */
   ngOnDestroy(): void {
     const c = this.map?.getCenter();
     if (c) this.mapState.center = [c.lat, c.lng];
@@ -172,8 +207,10 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.map?.remove();
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
-
+  /*
+   * Handles search input changes, clearing suggestions for short queries and debouncing autocomplete requests.
+   * @param value - Current value of the search input field (required)
+   */
   onSearchInput(value: string): void {
     this.searchNotFound = false;
     const q = value.trim();
@@ -185,6 +222,10 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.searchSubject.next(q);
   }
 
+  /*
+   * Handles the Enter key in the search box by selecting the first suggestion or falling back to a direct search.
+   * @param input - The search input element used to read and update the displayed value (required)
+   */
   onEnter(input: HTMLInputElement): void {
     if (this.suggestions.length > 0) {
       this.selectSuggestion(this.suggestions[0], input);
@@ -193,6 +234,11 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /*
+   * Flies the map to the selected Nominatim result and closes the suggestion dropdown.
+   * @param result - The chosen Nominatim search result (required)
+   * @param input - The search input element whose display value will be updated (required)
+   */
   selectSuggestion(result: NominatimResult, input: HTMLInputElement): void {
     this.map.flyTo([parseFloat(result.lat), parseFloat(result.lon)], 14, { duration: 1.2 });
     input.value          = this.suggestionName(result);
@@ -200,6 +246,10 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.suggestions     = [];
   }
 
+  /*
+   * Clears the search input and hides suggestions and error states.
+   * @param input - The search input element to clear (required)
+   */
   clearSearch(input: HTMLInputElement): void {
     input.value          = '';
     this.suggestions     = [];
@@ -207,19 +257,35 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     this.searchNotFound  = false;
   }
 
+  /*
+   * Hides the suggestions dropdown with a short delay so click events on suggestions fire first.
+   */
   closeSuggestions(): void {
-    // Slight delay so a click on a suggestion fires before the dropdown disappears
     setTimeout(() => { this.showSuggestions = false; }, 150);
   }
 
+  /*
+   * Extracts the primary display name from a Nominatim result, preferring the name field over display_name.
+   * @param r - A Nominatim geocoding result object (required)
+   * @returns The primary place name string
+   */
   suggestionName(r: NominatimResult): string {
     return r.name?.trim() || r.display_name.split(',')[0].trim();
   }
 
+  /*
+   * Extracts a short secondary description from a Nominatim result for display below the primary name.
+   * @param r - A Nominatim geocoding result object (required)
+   * @returns A comma-joined substring of the full display name
+   */
   suggestionSub(r: NominatimResult): string {
     return r.display_name.split(',').slice(1, 4).join(', ').trim();
   }
 
+  /*
+   * Fetches up to five autocomplete suggestions from the Nominatim API for the given query string.
+   * @param query - The trimmed search string to geocode (required)
+   */
   private async fetchSuggestions(query: string): Promise<void> {
     this.searching = true;
     try {
@@ -237,6 +303,11 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /*
+   * Performs a direct single-result Nominatim search and flies the map to the result, or sets searchNotFound on failure.
+   * @param query - The full search string entered by the user (required)
+   * @param input - The search input element used to update the displayed value on success (required)
+   */
   private async searchFallback(query: string, input: HTMLInputElement): Promise<void> {
     const q = query.trim();
     if (!q || this.searching) return;
@@ -266,8 +337,10 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // ── AIS ───────────────────────────────────────────────────────────────────
-
+  /*
+   * Creates or updates a Leaflet marker for the given AIS position report.
+   * @param pos - Vessel position data received from the AIS stream (required)
+   */
   private onPosition(pos: AisVesselPosition): void {
     const latlng   = L.latLng(pos.latitude, pos.longitude);
     const icon     = buildIcon(pos.heading, pos.navStatus);
@@ -286,6 +359,11 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /*
+   * Generates the HTML string for a vessel marker popup containing name, MMSI, SOG, heading, and status.
+   * @param pos - Vessel position data to render in the popup (required)
+   * @returns HTML string ready to pass to Leaflet's popup setContent
+   */
   private popupHtml(pos: AisVesselPosition): string {
     const status = NAV_LABELS[pos.navStatus ?? 15] ?? 'Unknown';
     return `
@@ -298,11 +376,18 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
       </div>`;
   }
 
+  /*
+   * Removes out-of-bounds vessel markers and queues a bounding-box update to the backend after map movement.
+   */
   private onMapMoved(): void {
     this.removeOutOfBoundsVessels(this.map.getBounds());
     this.bboxSubject.next();
   }
 
+  /*
+   * Removes from the map and internal cache all vessels whose last known position is outside the given bounds.
+   * @param bounds - Current Leaflet map bounds used as the visibility filter (required)
+   */
   private removeOutOfBoundsVessels(bounds: L.LatLngBounds): void {
     for (const [mmsi, track] of this.vessels) {
       if (!bounds.contains(track.latlng)) {
@@ -312,11 +397,17 @@ export class TerminalMapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /*
+   * Removes all vessel markers from the map and clears the internal vessel cache.
+   */
   private clearVessels(): void {
     for (const track of this.vessels.values()) track.marker.remove();
     this.vessels.clear();
   }
 
+  /*
+   * Removes vessel markers that have not received a position update within the stale timeout.
+   */
   private purgeStale(): void {
     const cutoff = Date.now() - STALE_MS;
     for (const [mmsi, track] of this.vessels) {

@@ -1,13 +1,13 @@
 <header class="h-16 ml-[260px] w-[calc(100%-260px)] sticky top-0 z-[1200] bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-8">
 
-  <!-- Left: title -->
+  <!-- App title -->
   <h2 class="text-lg font-black text-slate-900">{{ 'topbar.title' | translate }}</h2>
 
-  <!-- Right: actions -->
+  <!-- User controls -->
   <div class="flex items-center gap-lg">
     <div class="flex items-center gap-sm">
 
-      <!-- ── Notification bell ──────────────────────────────────── -->
+      <!-- Notification bell -->
       <div class="relative">
         <button type="button"
                 (click)="toggleNotif()"
@@ -27,15 +27,15 @@
           </span>
         </button>
 
-        <!-- backdrop -->
+        <!-- Backdrop -->
         <div *ngIf="notifOpen" class="fixed inset-0 z-40" (click)="closeNotif()"></div>
 
-        <!-- notifications dropdown -->
+        <!-- Notifications dropdown -->
         <div *ngIf="notifOpen"
              class="absolute right-0 top-full mt-2 z-50 w-80 bg-white rounded-xl
                     border border-slate-200 shadow-xl overflow-hidden">
 
-          <!-- Header -->
+          <!-- Dropdown header -->
           <div class="flex items-center justify-between px-md py-sm
                       border-b border-slate-100 bg-slate-50/60">
             <div class="flex items-center gap-xs">
@@ -79,9 +79,8 @@
                 </span>
               </div>
 
-              <!-- Content -->
+              <!-- Alert content -->
               <div class="flex-1 min-w-0">
-                <!-- Unread dot + vessel ID -->
                 <div class="flex items-center gap-xs">
                   <span *ngIf="!alert.read"
                         class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"></span>
@@ -110,7 +109,7 @@
         </div>
       </div>
 
-      <!-- ── Help button ─────────────────────────────────────── -->
+      <!-- Help button -->
       <div class="relative">
         <button type="button"
                 (click)="toggleHelp()"
@@ -119,10 +118,10 @@
           help
         </button>
 
-        <!-- backdrop -->
+        <!-- Backdrop -->
         <div *ngIf="helpOpen" class="fixed inset-0 z-40" (click)="closeHelp()"></div>
 
-        <!-- help popover -->
+        <!-- Help popover -->
         <div *ngIf="helpOpen"
              class="absolute right-0 top-full mt-2 z-50 w-72 bg-white rounded-xl border border-slate-200 shadow-xl p-lg">
           <div class="flex items-center gap-sm mb-sm">
@@ -133,7 +132,7 @@
         </div>
       </div>
 
-      <!-- ── Language selector ───────────────────────────────── -->
+      <!-- Language selector -->
       <div class="relative">
         <button type="button"
                 (click)="toggleLang()"
@@ -148,10 +147,10 @@
           </span>
         </button>
 
-        <!-- backdrop -->
+        <!-- Backdrop -->
         <div *ngIf="langOpen" class="fixed inset-0 z-40" (click)="closeLang()"></div>
 
-        <!-- language dropdown -->
+        <!-- Language dropdown -->
         <div *ngIf="langOpen"
              class="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl border border-slate-200 shadow-xl py-xs w-44">
           <div *ngFor="let l of languages"

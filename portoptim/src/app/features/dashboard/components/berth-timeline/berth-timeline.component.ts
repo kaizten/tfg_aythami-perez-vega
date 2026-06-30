@@ -10,8 +10,6 @@ import {
 import { OptimizationResultStoreService } from '../../../../core/services/optimization-result-store.service';
 import { TransformationStoreService } from '../../../../core/services/transformation-store.service';
 
-// ── Interfaces ──────────────────────────────────────────────────────────────────
-
 interface PhaseSegment {
   widthPct: string;
   colorClass: string;
@@ -27,11 +25,11 @@ interface GanttVessel {
   clippedLeft: boolean;
   clippedRight: boolean;
   phaseSegments?: PhaseSegment[];
-  /** Fondeo (anchorage) duration in hours — shown as anchor badge when visible. */
+  /* Computed - fondeo (anchorage) duration in hours shown as anchor badge when visible */
   fondeoH?: number;
-  /** True when the operation is past its scheduled end but within the 5 h grace window. */
+  /* Computed - true when the operation is past its scheduled end but within the 5 h grace window */
   showWarning?: boolean;
-  /** Total delay applied to this vessel (hours). Drives the red delay segment. */
+  /* Computed - total delay applied to this vessel in hours, drives the red delay segment */
   delayH?: number;
 }
 
@@ -41,16 +39,18 @@ interface GanttBerth {
   laneCount: number;
 }
 
-// ── Constants ───────────────────────────────────────────────────────────────────
-
+/* Fixed - pixel height of each swim lane row in the Gantt chart */
 const LANE_PX = 44;
+/* Fixed - number of milliseconds in one day used for percentage calculations */
 const DAY_MS = 24 * 3_600_000;
 
+/* Fixed - ordered list of Tailwind color classes cycled for CSV-mode vessel bars */
 const VESSEL_COLORS = [
   'bg-teal-500/90', 'bg-indigo-500/90', 'bg-amber-500/90',
   'bg-violet-500/90', 'bg-sky-500/90', 'bg-rose-500/90',
 ];
 
+/* Fixed - map from phase name to Tailwind background color class used in optimizer mode */
 const PHASE_COLORS: Record<string, string> = {
   delay:                'bg-red-500',
   fondeo:               'bg-amber-400',
@@ -61,13 +61,17 @@ const PHASE_COLORS: Record<string, string> = {
   waiting_undock:       'bg-violet-300',
 };
 
+/* Fixed - two-hour interval labels for the 24-hour timeline axis */
 const HOUR_LABELS = [
   '00:00', '02:00', '04:00', '06:00', '08:00', '10:00',
   '12:00', '14:00', '16:00', '18:00', '20:00', '22:00',
 ];
 
-// ── Helpers ─────────────────────────────────────────────────────────────────────
-
+/*
+ * Assigns each vessel interval to a swim lane so that overlapping bars do not collide.
+ * @param vessels - Array of objects with startMs and endMs timestamps (required)
+ * @returns Array of lane indices, one per input element
+ */
 function assignLanes(vessels: { startMs: number; endMs: number }[]): number[] {
   const laneEndMs: number[] = [];
   return vessels.map(v => {
@@ -79,12 +83,22 @@ function assignLanes(vessels: { startMs: number; endMs: number }[]): number[] {
   });
 }
 
+/*
+ * Truncates a timestamp to midnight of the same calendar day in local time.
+ * @param ms - Unix timestamp in milliseconds (required)
+ * @returns Unix timestamp of midnight for the given day
+ */
 function floorToDay(ms: number): number {
   const d = new Date(ms);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
+/*
+ * Derives a deterministic Tailwind color class for a vessel call by hashing its ID.
+ * @param callId - Unique call identifier string (required)
+ * @returns A Tailwind background color class from the VESSEL_COLORS palette
+ */
 function vesselColor(callId: string): string {
   let hash = 0;
   for (let i = 0; i < callId.length; i++) {
@@ -93,14 +107,17 @@ function vesselColor(callId: string): string {
   return VESSEL_COLORS[Math.abs(hash) % VESSEL_COLORS.length];
 }
 
+/*
+ * Converts a fractional hour value to an HH:MM string.
+ * @param h - Duration or time of day in decimal hours (required)
+ * @returns Zero-padded time string in HH:MM format
+ */
 function hoursToHHMM(h: number): string {
   const totalMin = Math.round(h * 60);
   const hh = Math.floor(totalMin / 60);
   const mm = totalMin % 60;
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
-
-// ── Component ───────────────────────────────────────────────────────────────────
 
 @Component({
   selector: 'app-berth-timeline',
@@ -109,21 +126,34 @@ function hoursToHHMM(h: number): string {
   styleUrl: './berth-timeline.component.scss',
 })
 export class BerthTimelineComponent implements OnInit, OnDestroy {
+  /* Fixed - hour labels array used to render the timeline axis ticks */
   readonly hourLabels = HOUR_LABELS;
+  /* Fixed - reference to the hoursToHHMM utility exposed to the template */
   readonly hoursToHHMM = hoursToHHMM;
+  /* Computed - list of Gantt berth rows rendered by the current day view */
   ganttBerths: GanttBerth[] = [];
 
+  /* Computed - human-readable date labels for all days that contain vessel calls */
   availableDays: string[] = [];
+  /* Computed - index into availableDays / dayStartsMs pointing to the currently displayed day */
   selectedDayIndex = 0;
 
+  /* Computed - true when the currently displayed day is today */
   isToday = false;
+  /* Computed - CSS left offset string for the current-time indicator line */
   currentTimeLeft = '';
+  /* Computed - true when the view is sourced from optimizer assignments rather than raw CSV data */
   isOptimizerMode = false;
 
+  /* Computed - midnight timestamps for each day that has vessel activity */
   private dayStartsMs: number[] = [];
+  /* Computed - full list of berth calls from the transformation store */
   private allCalls: BerthCall[] = [];
+  /* Computed - optimizer assignments filtered to only those with status 'assigned' */
   private allAssignments: OptimizationAssignment[] = [];
+  /* Computed - last transformation result snapshot used to restore CSV view when optimizer is cleared */
   private lastTransformResult: TransformApiResponse | null = null;
+  /* Computed - collection of all active RxJS subscriptions */
   private subs: Subscription[] = [];
 
   constructor(
@@ -131,6 +161,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     private optimizerResultStore: OptimizationResultStoreService,
   ) {}
 
+  /*
+   * Subscribes to transformation store, optimization store, and a 60-second clock tick to keep the timeline current.
+   */
   ngOnInit(): void {
     this.subs.push(
       this.transformStore.result$.subscribe(r => {
@@ -156,14 +189,26 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     );
   }
 
+  /*
+   * Returns the human-readable label for the currently selected day.
+   * @returns Localized date string for the selected day, or empty string if no days are available
+   */
   get selectedDayLabel(): string {
     return this.availableDays[this.selectedDayIndex] ?? '';
   }
 
+  /*
+   * Computes the CSS height string for a berth swim lane area based on the number of lanes.
+   * @param laneCount - Number of parallel swim lanes required for the berth (required)
+   * @returns CSS height string in pixels
+   */
   laneHeight(laneCount: number): string {
     return `${Math.max(laneCount, 1) * LANE_PX}px`;
   }
 
+  /*
+   * Navigates to the previous day if one is available and refreshes the view.
+   */
   prevDay(): void {
     if (this.selectedDayIndex > 0) {
       this.selectedDayIndex--;
@@ -172,6 +217,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     }
   }
 
+  /*
+   * Navigates to the next day if one is available and refreshes the view.
+   */
   nextDay(): void {
     if (this.selectedDayIndex < this.availableDays.length - 1) {
       this.selectedDayIndex++;
@@ -180,6 +228,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     }
   }
 
+  /*
+   * Jumps to today's date in the day selector and refreshes the view.
+   */
   goToday(): void {
     const todayMs = floorToDay(Date.now());
     const idx = this.dayStartsMs.indexOf(todayMs);
@@ -190,8 +241,10 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ── View builders ─────────────────────────────────────────────────────────
-
+  /*
+   * Initializes the day list and selects the current day from a transformation API response, then builds the day view.
+   * @param r - Transformation API response containing the berth call records (required)
+   */
   private buildView(r: TransformApiResponse): void {
     this.allCalls = r.data;
     if (!this.allCalls.length) { this.clearView(); return; }
@@ -218,6 +271,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     this.updateNowLine();
   }
 
+  /*
+   * Filters the full call list to the selected day and builds the Gantt berth rows for CSV mode.
+   */
   private buildDayView(): void {
     if (!this.allCalls.length || !this.dayStartsMs.length) return;
 
@@ -276,6 +332,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     this.ganttBerths = berths;
   }
 
+  /*
+   * Recomputes the current-time indicator position and updates the isToday flag.
+   */
   private updateNowLine(): void {
     const todayMs    = floorToDay(Date.now());
     const selectedMs = this.dayStartsMs[this.selectedDayIndex];
@@ -283,31 +342,28 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
 
     if (this.isToday) {
       const ratio = (Date.now() - todayMs) / DAY_MS;
-      // Label column is w-28 = 7rem; chart fills the rest of the container
       this.currentTimeLeft = `calc(${(ratio * 100).toFixed(4)}% + ${((1 - ratio) * 7).toFixed(4)}rem)`;
     }
   }
 
-  /**
-   * Returns the bar-start timestamp for an assignment.
-   *
-   * Always equals `phases[0].start` when phases are present:
-   *   - no delay        → phases[0] = fondeo  → vessel's original ETA
-   *   - arrival delay   → phases[0] = delay   → original ETA (before delay)
-   *   - operation delay → phases[0] = fondeo  → vessel's ETA (unchanged)
+  /*
+   * Returns the bar-start timestamp for an optimizer assignment, always equal to the first phase start.
+   * @param a - Optimization assignment object (required)
+   * @returns Unix timestamp in milliseconds for the start of the first phase (original ETA)
    */
   private fondeoStartMs(a: OptimizationAssignment): number {
     if (a.phases?.length) return new Date(a.phases[0].start).getTime();
     return new Date(a.scheduled_start).getTime() - a.waiting_time_h * 3_600_000;
   }
 
+  /*
+   * Initializes the day list from optimizer assignments and builds the first optimizer day view.
+   */
   private buildViewFromAssignments(): void {
     if (!this.allAssignments.length) { this.clearView(); return; }
 
     const daySet = new Set<number>();
     for (const a of this.allAssignments) {
-      // fondeoStartMs returns phases[0].start which is already the original ETA
-      // (the 'delay' phase, if any, is phases[0] for arrival delays).
       const s = floorToDay(this.fondeoStartMs(a));
       const e = floorToDay(new Date(a.scheduled_end).getTime());
       for (let d = s; d <= e; d += DAY_MS) daySet.add(d);
@@ -328,6 +384,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     this.updateNowLine();
   }
 
+  /*
+   * Filters optimizer assignments to the selected day and builds the Gantt berth rows with phase segments.
+   */
   private buildOptimizerDayView(): void {
     if (!this.allAssignments.length || !this.dayStartsMs.length) return;
 
@@ -335,8 +394,6 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     const dayEnd   = dayStart + DAY_MS;
     const nowMs    = Date.now();
 
-    // Include any assignment whose full range (original ETA → scheduled_end) overlaps
-    // this 24h window. fondeoStartMs returns phases[0].start = original ETA.
     const dayAssignments = this.allAssignments.filter(a => {
       const s = this.fondeoStartMs(a);
       const e = new Date(a.scheduled_end).getTime();
@@ -351,20 +408,19 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
 
     const berths: GanttBerth[] = [];
     for (const [berthId, assigns] of berthMap) {
-      // Sort by fondeo start so swim-lane assignment is consistent
       const sorted = [...assigns].sort((x, y) =>
         this.fondeoStartMs(x) - this.fondeoStartMs(y),
       );
 
       const clampedTimings = sorted.map(a => ({
-        startMs: Math.max(this.fondeoStartMs(a), dayStart),  // phases[0].start = original ETA
+        startMs: Math.max(this.fondeoStartMs(a), dayStart),
         endMs:   Math.min(new Date(a.scheduled_end).getTime(), dayEnd),
       }));
       const lanes = assignLanes(clampedTimings);
 
       const vessels: GanttVessel[] = sorted.map((a, i) => {
         const delayH = a.delay_h ?? 0;
-        const rawS   = this.fondeoStartMs(a);  // phases[0].start = original ETA
+        const rawS   = this.fondeoStartMs(a);
         const rawE   = new Date(a.scheduled_end).getTime();
         const clippedLeft  = rawS < dayStart;
         const clippedRight = rawE > dayEnd;
@@ -372,13 +428,8 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
         const visEnd   = clampedTimings[i].endMs;
         const visDur   = visEnd - visStart;
 
-        // ⚠ Warning: operation has passed its end but is within the 5 h grace window
         const showWarning = rawE <= nowMs && nowMs < rawE + 5 * 3_600_000;
 
-        // Phase segments — backend inserts 'delay' phase at the right position:
-        //   arrival delay  → [delay, fondeo, atraque, ejecucion, desatraque]
-        //   operation delay→ [fondeo, atraque, ejecucion, delay, desatraque]
-        // Just iterate a.phases in order and clip each to [visStart, visEnd].
         let phaseSegments: PhaseSegment[] | undefined;
         if (a.phases?.length && visDur > 0) {
           const resourceWaitH = Math.max(a.pilot_wait_h ?? 0, a.tug_wait_h ?? 0);
@@ -425,7 +476,6 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
           if (segments.length) phaseSegments = segments;
         }
 
-        // Fondeo badge: only when the fondeo phase is visible in this window
         let fondeoH: number | undefined;
         const fondeoPhase = a.phases?.find(p => p.name === 'fondeo');
         if (fondeoPhase && fondeoPhase.duration_h > 0) {
@@ -457,6 +507,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     this.ganttBerths = berths;
   }
 
+  /*
+   * Resets all view state, collapsing the timeline to an empty state.
+   */
   private clearView(): void {
     this.allCalls        = [];
     this.availableDays   = [];
@@ -466,6 +519,9 @@ export class BerthTimelineComponent implements OnInit, OnDestroy {
     this.isToday         = false;
   }
 
+  /*
+   * Unsubscribes from all active subscriptions to prevent memory leaks.
+   */
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
   }

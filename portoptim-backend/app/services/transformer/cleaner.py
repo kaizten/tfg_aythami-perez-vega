@@ -7,7 +7,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# String columns that should have leading/trailing whitespace removed.
+# Fixed - string columns from which leading/trailing whitespace is stripped
 STRING_COLUMNS: list[str] = [
     "call_id",
     "berth_id",
@@ -16,54 +16,60 @@ STRING_COLUMNS: list[str] = [
     "cargo_nature",
 ]
 
-# Subset of columns used to detect duplicate records.
+# Fixed - column subset used to identify and drop duplicate records
 DEDUP_SUBSET: list[str] = ["call_id", "operation_type"]
 
-# Key used to identify concurrent operations of the same vessel at the same berth.
+# Fixed - column subset that identifies concurrent operations of the same vessel at the same berth
 CONCURRENT_KEY: list[str] = ["call_id", "berth_id", "arrival_time", "departure_time"]
 
 
 @dataclass
 class CleaningReport:
-    """Counts of rows removed at each cleaning stage."""
+    """Counts of rows removed at each cleaning stage and any associated warnings."""
 
+    # Computed - total number of rows before any cleaning is applied
     rows_before: int = 0
+
+    # Computed - number of rows dropped because every column was null
     fully_empty_dropped: int = 0
+
+    # Computed - number of rows dropped as exact duplicates on the deduplication key
     duplicates_dropped: int = 0
+
+    # Computed - total number of rows remaining after all cleaning steps
     rows_after: int = 0
+
+    # Computed - human-readable messages for each deduplication event
     warnings: list[str] = field(default_factory=list)
 
 
 def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, CleaningReport]:
     """
-    Apply all cleaning steps to *df* in order.
+    Apply all cleaning steps to df in order.
 
     Steps:
         1. Drop rows where every selected column is null.
         2. Strip whitespace from string-type columns.
-        3. Drop exact duplicate rows (same call_id + operation_type, keep first).
+        3. Drop exact duplicate rows keyed on call_id and operation_type.
 
     Args:
-        df: Renamed DataFrame from the validation step.
+        df (pd.DataFrame): Renamed DataFrame from the validation step. Required.
 
     Returns:
-        Tuple of (cleaned DataFrame, CleaningReport with row counts).
+        tuple[pd.DataFrame, CleaningReport]: Cleaned DataFrame and a report with row counts.
     """
     report = CleaningReport(rows_before=len(df))
 
-    # Step 1 — drop fully empty rows (all values NaN); copy to avoid chained-assignment warnings
     before = len(df)
     df = df.dropna(how="all").copy()
     report.fully_empty_dropped = before - len(df)
     if report.fully_empty_dropped:
         logger.info("Dropped %d fully-empty rows.", report.fully_empty_dropped)
 
-    # Step 2 — strip whitespace from string columns
     for col in STRING_COLUMNS:
         if col in df.columns and df[col].dtype == object:
             df.loc[:, col] = df[col].str.strip()
 
-    # Step 3 — deduplicate on (call_id, operation_type)
     before = len(df)
     duplicate_mask = df.duplicated(subset=DEDUP_SUBSET, keep="first")
     if duplicate_mask.any():
@@ -85,23 +91,23 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, CleaningReport]:
 
 def merge_concurrent_operations(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     """
-    Collapse rows where the same vessel performs multiple operations at the same
-    berth during the exact same time window (identical call_id, berth_id,
-    arrival_time and departure_time) into a single row.
+    Collapse rows where the same vessel performs multiple operations at the same berth
+    during the exact same time window into a single combined row.
 
-    The merged row keeps first-row values for all vessel/berth fields and:
-      - operation_type: joined with " y " in occurrence order (e.g. "Embarque y Trasbordo").
-      - cargo_group / cargo_nature: distinct values joined with " / ".
-      - quantity: sum of all rows (NaN when all are NaN).
+    Rows are grouped by CONCURRENT_KEY (call_id, berth_id, arrival_time, departure_time).
+    The merged row keeps first-row values for all vessel and berth fields, then:
+        - operation_type: distinct values joined with ' y ' in occurrence order.
+        - cargo_group and cargo_nature: distinct non-empty values joined with ' / '.
+        - quantity: sum across the concurrent rows (NaN when all values are NaN).
 
-    This step must run **after** normalization so that operation_type values
-    are already in their canonical form (Embarque, Desembarque, Trasbordo).
+    This step must run after normalization so that operation_type values are already
+    in their canonical form (Embarque, Desembarque, Trasbordo).
 
     Args:
-        df: Normalised DataFrame from the normalization step.
+        df (pd.DataFrame): Normalised DataFrame from the normalization step. Required.
 
     Returns:
-        Tuple of (merged DataFrame, number of rows removed by merging).
+        tuple[pd.DataFrame, int]: Merged DataFrame and the number of rows removed by merging.
     """
     group_sizes = df.groupby(CONCURRENT_KEY, sort=False).size()
     if (group_sizes > 1).sum() == 0:
@@ -117,7 +123,6 @@ def merge_concurrent_operations(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
         base = group.iloc[0].copy()
 
-        # Combine operation types in occurrence order, no duplicates.
         seen: set[str] = set()
         op_parts: list[str] = []
         for op in group["operation_type"]:
@@ -126,15 +131,13 @@ def merge_concurrent_operations(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
                 op_parts.append(op)
         base["operation_type"] = " y ".join(op_parts)
 
-        # Combine cargo fields — join distinct non-empty values.
         for col in ("cargo_group", "cargo_nature"):
             if col in group.columns:
                 distinct = [
-                    v for v in dict.fromkeys(group[col].tolist()) if v  # preserve order, skip ""
+                    v for v in dict.fromkeys(group[col].tolist()) if v
                 ]
                 base[col] = " / ".join(distinct) if distinct else ""
 
-        # Sum quantity across the concurrent rows.
         if "quantity" in group.columns:
             base["quantity"] = group["quantity"].sum(min_count=1)
 

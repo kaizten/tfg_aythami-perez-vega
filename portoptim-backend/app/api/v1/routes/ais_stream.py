@@ -1,4 +1,5 @@
 """WebSocket relay — connects to AISStream.io and fans out PositionReport messages to Angular clients."""
+
 import asyncio
 import json
 import logging
@@ -8,22 +9,39 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
+# Fixed - FastAPI router for AIS-related WebSocket endpoints
 router = APIRouter(tags=["ais"])
 
+# Fixed - AISStream.io upstream WebSocket URL
 _AISSTREAM_URL = "wss://stream.aisstream.io/v0/stream"
-_API_KEY       = "d3badf9c95fe7c87f9223e7c59a1a1bc73870721"
 
-# Bbox updated dynamically by the frontend; relay reconnects when it changes
+# Fixed - API key for authenticating with the AISStream.io service
+_API_KEY = "d3badf9c95fe7c87f9223e7c59a1a1bc73870721"
+
+# Computed - active geographic bounding box sent to AISStream; updated by frontend messages
 _current_bbox: list = [[[28.06, -15.52], [28.18, -15.36]]]
 
-_clients:            set[WebSocket] = set()
-_relay_task:         asyncio.Task | None = None
-_active_ws                          = None   # current AISStream WebSocket
+# Computed - set of currently connected Angular frontend WebSocket clients
+_clients: set[WebSocket] = set()
+
+# Computed - background asyncio task running the upstream relay loop
+_relay_task: asyncio.Task | None = None
+
+# Computed - current open connection to the AISStream upstream WebSocket
+_active_ws = None
+
+# Computed - pending debounce task that applies a queued bbox update
 _reconnect_debounce: asyncio.Task | None = None
 
 
 async def _relay_loop() -> None:
-    """Long-lived relay: reconnects to AISStream whenever the connection drops or bbox changes."""
+    """
+    Long-lived background coroutine that maintains the upstream AISStream connection.
+
+    Reconnects automatically with exponential back-off whenever the connection
+    drops or the bounding box changes. Forwards every received PositionReport
+    message to all connected frontend clients.
+    """
     global _active_ws
     backoff = 2
     while True:
@@ -61,18 +79,27 @@ async def _relay_loop() -> None:
 
 
 async def _debounced_reconnect() -> None:
-    """Wait 1 s after last bbox update, then close the active AISStream connection.
-    The relay loop will immediately reconnect with the new bbox."""
+    """
+    Wait 1 second after the last bbox update, then close the upstream connection.
+
+    The relay loop detects the closure and immediately reconnects using the
+    updated bounding box stored in _current_bbox.
+    """
     try:
         await asyncio.sleep(1.0)
         logger.info("AISStream: applying new bbox %s", _current_bbox)
         if _active_ws is not None:
             await _active_ws.close()
     except asyncio.CancelledError:
-        pass  # superseded by a newer bbox update
+        pass
 
 
 def _schedule_reconnect() -> None:
+    """
+    Cancel any pending debounce task and start a new one for the latest bbox update.
+
+    Ensures rapid successive bbox changes are coalesced into a single reconnect.
+    """
     global _reconnect_debounce
     if _reconnect_debounce and not _reconnect_debounce.done():
         _reconnect_debounce.cancel()
@@ -81,6 +108,15 @@ def _schedule_reconnect() -> None:
 
 @router.websocket("/ws/ais-stream")
 async def ais_websocket(websocket: WebSocket) -> None:
+    """
+    WebSocket /ws/ais-stream — accept a frontend client and relay AIS position data.
+
+    Registers the client in the shared set, starts the upstream relay task if not
+    already running, and listens for bbox update messages from the client.
+
+    Args:
+        websocket (WebSocket): The incoming WebSocket connection from the frontend. Required.
+    """
     global _relay_task
     await websocket.accept()
     _clients.add(websocket)
@@ -95,7 +131,7 @@ async def ais_websocket(websocket: WebSocket) -> None:
             try:
                 msg = json.loads(data)
                 if msg.get("type") == "bbox":
-                    _current_bbox[:] = msg["bbox"]   # mutate in-place so _relay_loop sees the update
+                    _current_bbox[:] = msg["bbox"]
                     logger.info("AISStream: bbox queued → %s", _current_bbox)
                     _schedule_reconnect()
             except Exception:

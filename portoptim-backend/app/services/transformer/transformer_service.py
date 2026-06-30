@@ -19,11 +19,20 @@ from app.services.transformer.validator import (
 
 logger = logging.getLogger(__name__)
 
+# Fixed - compiled regex for extracting the alphabetic port prefix from a call_id
 _PORT_PREFIX_RE = re.compile(r"^([A-Za-z]+)")
 
 
 def _port_code(call_id: str) -> str:
-    """Extract the alphabetic port prefix from a call_id (e.g. 'T202200020' → 'T')."""
+    """
+    Extract the alphabetic port prefix from a call_id string.
+
+    Args:
+        call_id (str): Port call identifier such as 'T202200020'. Required.
+
+    Returns:
+        str: Uppercase port prefix (e.g. 'T'), or 'UNKNOWN' if no prefix is found.
+    """
     m = _PORT_PREFIX_RE.match(call_id)
     return m.group(1).upper() if m else "UNKNOWN"
 
@@ -32,9 +41,16 @@ def _port_code(call_id: str) -> str:
 class TransformationSummary:
     """High-level statistics returned alongside the transformed data."""
 
+    # Computed - number of rows in the raw input DataFrame before any processing
     total_input_rows: int = 0
+
+    # Computed - number of rows that were successfully converted to BerthCall records
     valid_rows: int = 0
+
+    # Computed - number of rows dropped or merged during the pipeline
     skipped_rows: int = 0
+
+    # Computed - human-readable explanations for each skipped or merged row
     skipped_reasons: list[str] = field(default_factory=list)
 
 
@@ -42,8 +58,13 @@ class TransformationSummary:
 class TransformationResult:
     """Full output of the transformation pipeline."""
 
+    # Computed - list of valid, fully validated BerthCall instances
     records: list[BerthCall]
+
+    # Computed - statistics about the transformation run
     summary: TransformationSummary
+
+    # Computed - sorted list of unique port codes found in the valid records
     available_ports: list[str] = field(default_factory=list)
 
 
@@ -55,19 +76,18 @@ def _row_to_berth_call(
     Attempt to build a BerthCall from a single normalised DataFrame row.
 
     Rows with missing critical fields or invalid Pydantic data are skipped
-    and counted in *summary* rather than raising an exception.
+    and counted in summary rather than raising an exception.
 
     Args:
-        row: A single row from the normalised DataFrame.
-        summary: Mutable summary object updated on skip.
+        row (pd.Series): A single row from the normalised DataFrame. Required.
+        summary (TransformationSummary): Mutable summary object updated on skip. Required.
 
     Returns:
-        A BerthCall instance, or None if the row is invalid.
+        BerthCall | None: A BerthCall instance, or None if the row is invalid.
     """
     call_id = str(row.get("call_id", "")).strip()
     berth_id = str(row.get("berth_id", "")).strip()
 
-    # Guard: critical string fields
     if not call_id or not berth_id:
         reason = f"Row skipped — missing call_id or berth_id (call_id={call_id!r})"
         logger.warning(reason)
@@ -75,7 +95,6 @@ def _row_to_berth_call(
         summary.skipped_reasons.append(reason)
         return None
 
-    # Guard: critical date fields
     if pd.isna(row.get("arrival_time")) or pd.isna(row.get("departure_time")):
         reason = (
             f"Row skipped — unparseable or missing date for call_id={call_id!r}"
@@ -85,7 +104,6 @@ def _row_to_berth_call(
         summary.skipped_reasons.append(reason)
         return None
 
-    # Guard: critical numeric fields
     if pd.isna(row.get("vessel_length")) or pd.isna(row.get("vessel_gt")):
         reason = (
             f"Row skipped — missing vessel_length or vessel_gt for call_id={call_id!r}"
@@ -124,49 +142,44 @@ def run_pipeline(df: pd.DataFrame) -> TransformationResult:
 
     Pipeline stages:
         1. Schema validation (raises ValueError on missing columns).
-        2. Column renaming.
-        3. Cleaning (drop empty rows, deduplicate, strip whitespace).
+        2. Column renaming to internal aliases.
+        3. Cleaning (drop empty rows, strip whitespace, deduplicate).
         4. Normalization (parse dates, convert types, standardize enums).
-        5. Row-level Pydantic model construction with per-row error recovery.
+        5. Merging of concurrent operations for the same vessel and berth.
+        6. Row-level Pydantic model construction with per-row error recovery.
 
     Args:
-        df: Raw DataFrame loaded from the uploaded CSV/Excel file.
+        df (pd.DataFrame): Raw DataFrame loaded from the uploaded CSV or Excel file. Required.
 
     Returns:
-        TransformationResult with a list of valid BerthCall records
-        and a TransformationSummary.
+        TransformationResult: Contains valid BerthCall records, a TransformationSummary,
+        and the list of distinct port codes found.
 
     Raises:
         ValueError: If required columns are missing from the input schema.
     """
     summary = TransformationSummary(total_input_rows=len(df))
 
-    # Stage 1 — schema validation
     validation: ValidationResult = validate_schema(df)
     if not validation.is_valid:
         raise ValueError(
             f"Input file is missing required columns: {validation.missing_columns}"
         )
 
-    # Stage 2 — rename to internal aliases
     df = rename_columns(df)
 
-    # Stage 3 — cleaning
     df, cleaning_report = clean(df)
     if cleaning_report.warnings:
         summary.skipped_reasons.extend(cleaning_report.warnings)
 
-    # Stage 4 — normalization
     df = normalize(df)
 
-    # Stage 4.5 — merge concurrent operations (same vessel, berth, and time window)
     df, merged_away = merge_concurrent_operations(df)
     if merged_away:
         msg = f"Merged {merged_away} rows with concurrent operations into combined operation types."
         logger.info(msg)
         summary.skipped_reasons.append(msg)
 
-    # Stage 5 — row-level model construction
     records: list[BerthCall] = []
     for _, row in df.iterrows():
         berth_call = _row_to_berth_call(row, summary)

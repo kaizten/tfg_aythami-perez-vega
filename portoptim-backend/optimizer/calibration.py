@@ -1,15 +1,4 @@
-"""
-Phase 1 — Calibration.
-
-Reads a historical CSV (optional) and builds four generic statistical models:
-  • rate_model      – median t/h per (tipo_operacion, grupo_mercancia)
-  • duration_model  – median duration per (tipo_operacion, grupo_mercancia, eslora_bucket)
-  • overlap_factor_learned – ratio of actual multi-op duration to sum of individual estimates
-  • maneuver_model  – median manoeuvre duration per (eslora_bucket, hazardous)
-
-No berth name or port-specific field is ever stored; all patterns are learned
-by operation type and cargo group so the models work with any port config.
-"""
+"""Phase 1 — Calibration: fits statistical models from a historical CSV for duration and manoeuvre estimation."""
 
 from __future__ import annotations
 
@@ -21,12 +10,23 @@ import structlog
 
 logger = structlog.get_logger()
 
-MIN_OBS = 5  # minimum observations required to trust a model cell
+# Fixed - minimum number of observations required to trust a learned model cell
+MIN_OBS = 5
 
+# Fixed - cargo groups classified as hazardous requiring extra safety resources
 HAZARDOUS_CARGO_GROUPS: frozenset[str] = frozenset({"Energético", "Químicos"})
 
 
 def get_eslora_bucket(eslora: float) -> str:
+    """
+    Map a vessel length to a discrete size bucket used as a model key.
+
+    Args:
+        eslora (float): Vessel length overall in metres. Required.
+
+    Returns:
+        str: One of "<80m", "80-150m", "150-220m", or ">220m".
+    """
     if eslora < 80:
         return "<80m"
     if eslora < 150:
@@ -38,40 +38,74 @@ def get_eslora_bucket(eslora: float) -> str:
 
 class Calibration:
     """
-    Optional calibration object.  Pass csv_path to fit from historical data;
-    omit (or pass None) for a no-op calibration that always returns None,
-    letting the duration estimator fall back to the configured default.
+    Optional calibration object that fits statistical models from historical port data.
+
+    Pass csv_path to fit from a CSV file; omit for a no-op calibration that returns
+    None for all queries, causing the duration estimator to fall back to the configured default.
     """
 
     def __init__(self, csv_path: Optional[str] = None) -> None:
+        """
+        Initialize calibration, optionally fitting models from a CSV file.
+
+        Args:
+            csv_path (str): Server-side path to the historical CSV file. Optional, defaults to None.
+        """
+        # Computed - median throughput rate (t/h) keyed by (tipo_operacion, grupo_mercancia)
         self.rate_model: dict[tuple[str, str], float] = {}
+        # Computed - median operation duration (h) keyed by (tipo_operacion, grupo_mercancia, eslora_bucket)
         self.duration_model: dict[tuple[str, str, str], float] = {}
+        # Computed - learned ratio of actual multi-operation duration to sum of individual estimates
         self.overlap_factor_learned: Optional[float] = None
+        # Computed - median manoeuvre duration (h) keyed by (eslora_bucket, hazardous)
         self.maneuver_model: dict[tuple[str, bool], float] = {}
 
         if csv_path and Path(csv_path).exists():
             self._fit(csv_path)
 
-    # ── Public interface ───────────────────────────────────────────────────────
-
     def get_rate(self, tipo_operacion: str, grupo_mercancia: str) -> Optional[float]:
-        """Median t/h for this (operation, cargo) pair, or None if not calibrated."""
+        """
+        Return the median throughput rate for a given operation and cargo group.
+
+        Args:
+            tipo_operacion (str): Type of port operation. Required.
+            grupo_mercancia (str): Cargo group identifier. Required.
+
+        Returns:
+            Optional[float]: Median rate in tonnes per hour, or None if not calibrated.
+        """
         return self.rate_model.get((tipo_operacion, grupo_mercancia))
 
     def get_duration(
         self, tipo_operacion: str, grupo_mercancia: str, eslora: float
     ) -> Optional[float]:
-        """Median duration (h) for this (operation, cargo, eslora bucket), or None."""
+        """
+        Return the median operation duration for a given operation, cargo group, and vessel size.
+
+        Args:
+            tipo_operacion (str): Type of port operation. Required.
+            grupo_mercancia (str): Cargo group identifier. Required.
+            eslora (float): Vessel length in metres used to select the size bucket. Required.
+
+        Returns:
+            Optional[float]: Median duration in hours, or None if not calibrated.
+        """
         bucket = get_eslora_bucket(eslora)
         return self.duration_model.get((tipo_operacion, grupo_mercancia, bucket))
 
     def get_maneuver_duration(self, eslora: float, grupo_mercancia: str) -> float:
         """
-        Estimated manoeuvre duration (h) for docking or undocking.
+        Return the estimated manoeuvre duration for docking or undocking.
 
-        Looks up the learned maneuver_model by (eslora_bucket, hazardous).
-        Falls back to the formula ``0.5 + 0.3 * hazardous`` if the cell has
+        Falls back to the formula 0.5 + 0.3 * hazardous if the model cell has
         fewer than MIN_OBS observations or the model was not fitted at all.
+
+        Args:
+            eslora (float): Vessel length in metres. Required.
+            grupo_mercancia (str): Cargo group identifier used to detect hazardous cargo. Required.
+
+        Returns:
+            float: Estimated single manoeuvre duration in hours.
         """
         hazardous = grupo_mercancia in HAZARDOUS_CARGO_GROUPS
         bucket = get_eslora_bucket(eslora)
@@ -81,6 +115,12 @@ class Calibration:
         return 0.5 + (0.3 if hazardous else 0.0)
 
     def stats(self) -> dict:
+        """
+        Return a summary of the fitted calibration models for inspection.
+
+        Returns:
+            dict: Entry counts and model contents for all four sub-models.
+        """
         return {
             "rate_model_entries": len(self.rate_model),
             "duration_model_entries": len(self.duration_model),
@@ -96,9 +136,13 @@ class Calibration:
             },
         }
 
-    # ── Fitting ────────────────────────────────────────────────────────────────
-
     def _fit(self, csv_path: str) -> None:
+        """
+        Fit all four statistical models from the historical CSV file.
+
+        Args:
+            csv_path (str): Server-side path to the historical CSV file. Required.
+        """
         df = pd.read_csv(csv_path, low_memory=False)
         df = self._normalize_columns(df)
         self._build_rate_model(df)
@@ -115,7 +159,15 @@ class Calibration:
         )
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Rename CSV columns to internal names regardless of their original form."""
+        """
+        Rename CSV columns to internal names regardless of their original form.
+
+        Args:
+            df (pd.DataFrame): Raw DataFrame read from the CSV file. Required.
+
+        Returns:
+            pd.DataFrame: DataFrame with standardized column names and computed duration_h column.
+        """
         rename: dict[str, str] = {}
         for col in df.columns:
             lower = col.lower().strip()
@@ -149,6 +201,12 @@ class Calibration:
         return df
 
     def _build_rate_model(self, df: pd.DataFrame) -> None:
+        """
+        Build the throughput rate model: median tonnes per hour per (operation, cargo) pair.
+
+        Args:
+            df (pd.DataFrame): Normalized historical DataFrame. Required.
+        """
         required = {"tipo_operacion", "grupo_mercancia", "cantidad", "duration_h"}
         if not required.issubset(df.columns):
             return
@@ -167,6 +225,12 @@ class Calibration:
                     self.rate_model[(tipo, grupo)] = r
 
     def _build_duration_model(self, df: pd.DataFrame) -> None:
+        """
+        Build the duration model: median operation duration per (operation, cargo, eslora bucket).
+
+        Args:
+            df (pd.DataFrame): Normalized historical DataFrame. Required.
+        """
         required = {"tipo_operacion", "grupo_mercancia", "eslora", "duration_h"}
         if not required.issubset(df.columns):
             return
@@ -186,6 +250,12 @@ class Calibration:
                     self.duration_model[(tipo, grupo, bucket)] = d
 
     def _learn_overlap_factor(self, df: pd.DataFrame) -> None:
+        """
+        Learn the overlap factor from port calls with multiple simultaneous operations.
+
+        Args:
+            df (pd.DataFrame): Normalized historical DataFrame. Required.
+        """
         required = {"escala", "tipo_operacion", "duration_h"}
         if not required.issubset(df.columns):
             return
@@ -231,15 +301,13 @@ class Calibration:
 
     def _build_maneuver_model(self, df: pd.DataFrame) -> None:
         """
-        Build maneuver_model: median estimated manoeuvre duration per
-        (eslora_bucket, hazardous).
+        Build the manoeuvre duration model: median estimated manoeuvre time per (eslora bucket, hazardous).
 
-        The target is a proxy derived from vessel length and hazardous flag:
-            base = 0.08 * eslora / 10   (~5 min per 10 m of vessel length)
-            target = base + 0.3 if hazardous else base
+        Uses a proxy target derived from vessel length and hazardous flag.
+        Cells with fewer than MIN_OBS rows are skipped and fall back to the formula at query time.
 
-        Requires at least MIN_OBS rows per cell; cells below the threshold keep
-        the formula fallback (applied at query time in get_maneuver_duration).
+        Args:
+            df (pd.DataFrame): Normalized historical DataFrame. Required.
         """
         required = {"eslora", "grupo_mercancia"}
         if not required.issubset(df.columns):

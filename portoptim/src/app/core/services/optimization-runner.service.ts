@@ -1,13 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
 
-/** Payload surfaced to the UI after a successful early-completion call. */
 export interface EarlyCompleteInfo {
-  /** Hours the vessel had to wait at berth for undocking resources (0 = immediate). */
+  /* Computed - hours the vessel waited at berth for undocking resources (0 = immediate) */
   waitingUndockH:   number;
-  /** True when at least one fondeo vessel for this berth was rescheduled. */
+  /* Computed - true when at least one fondeo vessel for this berth was rescheduled */
   replanTriggered:  boolean;
-  /** How many hours earlier the berth is freed vs. the original schedule. */
+  /* Computed - how many hours earlier the berth is freed vs. the original schedule */
   berthFreedDeltaH: number;
 }
 import { BehaviorSubject, Subscription } from 'rxjs';
@@ -22,76 +21,101 @@ import { OptimizationParamsStoreService } from './optimization-params-store.serv
 import { OptimizationResultStoreService } from './optimization-result-store.service';
 import { PortOptimApiService } from './portoptim-api.service';
 
-/**
- * Singleton service that owns the optimizer API subscription so it survives
- * Angular component navigation (ngOnDestroy no longer cancels the HTTP call).
- *
- * Also manages the re-planning lifecycle:
- *   - {@link applyDelay}   — accumulate delay and call /replan
- *   - {@link resetDelays}  — clear accumulated delays (called on optimizer reset)
- *
- * The base assignments snapshot is updated after every successful operation
- * (run, replan, early-complete) so that each subsequent call composes on top
- * of the latest known schedule rather than an outdated snapshot.
- */
 @Injectable({ providedIn: 'root' })
 export class OptimizationRunnerService {
 
-  // ── Optimization run state ────────────────────────────────────────────────
+  /* Computed - internal BehaviorSubject tracking whether an optimization run is in progress */
   private readonly _isRunning$             = new BehaviorSubject<boolean>(false);
+  /* Computed - internal BehaviorSubject holding the last run error message, or null */
   private readonly _error$                 = new BehaviorSubject<string | null>(null);
+  /* Computed - internal BehaviorSubject controlling the optimization completion toast visibility */
   private readonly _showNotification$      = new BehaviorSubject<boolean>(false);
+  /* Computed - internal BehaviorSubject controlling the replan completion toast visibility */
   private readonly _showReplanNotification$ = new BehaviorSubject<boolean>(false);
 
+  /* Computed - public Observable indicating whether an optimization run is active */
   readonly isRunning$             = this._isRunning$.asObservable();
+  /* Computed - public Observable of the last run error message */
   readonly error$                 = this._error$.asObservable();
-  /** Emits true when the optimization finishes and the user is NOT on /optimization. */
+  /* Computed - emits true when the optimization finishes and the user is not on /optimization */
   readonly showNotification$      = this._showNotification$.asObservable();
-  /** Emits true when a replan / early-complete finishes outside /optimization. */
+  /* Computed - emits true when a replan or early-complete finishes outside /optimization */
   readonly showReplanNotification$ = this._showReplanNotification$.asObservable();
 
+  /*
+   * Returns whether an optimization run is currently in progress.
+   * @returns True when a run is active
+   */
   get isRunning(): boolean       { return this._isRunning$.value; }
+  /*
+   * Returns the last optimization error message.
+   * @returns The error string or null if no error occurred
+   */
   get error():     string | null { return this._error$.value;     }
 
-  // ── Re-planning state ─────────────────────────────────────────────────────
+  /* Computed - internal BehaviorSubject tracking whether a replan is in progress */
   private readonly _isReplanning$ = new BehaviorSubject<boolean>(false);
+  /* Computed - internal BehaviorSubject holding the last replan error message, or null */
   private readonly _replanError$  = new BehaviorSubject<string | null>(null);
 
+  /* Computed - public Observable indicating whether a replan is currently running */
   readonly isReplanning$ = this._isReplanning$.asObservable();
+  /* Computed - public Observable of the last replan error message */
   readonly replanError$  = this._replanError$.asObservable();
 
+  /*
+   * Returns whether a replan is currently in progress.
+   * @returns True when replanning is active
+   */
   get isReplanning(): boolean      { return this._isReplanning$.value; }
+  /*
+   * Returns the last replan error message.
+   * @returns The error string or null if no error occurred
+   */
   get replanError():  string|null  { return this._replanError$.value;  }
 
-  // ── Early-completion state ─────────────────────────────────────────────────
-
+  /* Computed - internal BehaviorSubject tracking whether an early-completion call is in progress */
   private readonly _isEarlyCompleting$  = new BehaviorSubject<boolean>(false);
+  /* Computed - internal BehaviorSubject holding the last early-completion error message, or null */
   private readonly _earlyCompleteError$ = new BehaviorSubject<string | null>(null);
+  /* Computed - internal BehaviorSubject holding the result details of the last early-completion call */
   private readonly _earlyCompleteInfo$  = new BehaviorSubject<EarlyCompleteInfo | null>(null);
 
+  /* Computed - public Observable indicating whether an early-completion call is active */
   readonly isEarlyCompleting$  = this._isEarlyCompleting$.asObservable();
+  /* Computed - public Observable of the last early-completion error message */
   readonly earlyCompleteError$ = this._earlyCompleteError$.asObservable();
+  /* Computed - public Observable of the last early-completion result details */
   readonly earlyCompleteInfo$  = this._earlyCompleteInfo$.asObservable();
 
+  /*
+   * Returns whether an early-completion call is currently in progress.
+   * @returns True when early completion is active
+   */
   get isEarlyCompleting():  boolean              { return this._isEarlyCompleting$.value;  }
+  /*
+   * Returns the last early-completion error message.
+   * @returns The error string or null if no error occurred
+   */
   get earlyCompleteError(): string | null        { return this._earlyCompleteError$.value; }
+  /*
+   * Returns the result details of the last early-completion call.
+   * @returns The EarlyCompleteInfo object or null if not yet set
+   */
   get earlyCompleteInfo():  EarlyCompleteInfo | null { return this._earlyCompleteInfo$.value; }
 
-  // ── Stored context for re-planning ────────────────────────────────────────
-  /** Base assignments from the most recent successful operation (run / replan / early-complete). */
+  /* Computed - assignment list from the most recent successful operation, used as the base for replanning */
   private baseAssignments: OptimizationApiResult['assignments'] | null = null;
-  /** Original /run request — reused by /replan with updated ETAs. */
+  /* Computed - original /run request reused by /replan with updated ETAs */
   private lastRequest: OptimizationApiRequest | null = null;
-  /**
-   * Accumulated delay per vessel (total hours, not incremental).
-   * Always sends the full total to the backend so re-plans are idempotent.
-   */
+  /* Computed - accumulated total delay hours per vessel; always sent as the full total to the backend */
   private readonly vesselDelays     = new Map<string, number>();
-  /** Delay type per vessel: "arrival" or "operation" (last call wins). */
+  /* Computed - delay type per vessel; last applied type wins when multiple delays are applied */
   private readonly vesselDelayTypes = new Map<string, 'arrival' | 'operation'>();
-  /** Accumulated early-arrival hours per vessel (how many hours before ETA they arrived). */
+  /* Computed - accumulated early-arrival hours per vessel */
   private readonly earlyArrivals    = new Map<string, number>();
 
+  /* Computed - active HTTP subscription, replaced on each new run or replan */
   private sub?: Subscription;
 
   constructor(
@@ -101,9 +125,10 @@ export class OptimizationRunnerService {
     private router:      Router,
   ) {}
 
-  // ── Optimizer run ─────────────────────────────────────────────────────────
-
-  /** Starts a new optimization run (no-op if one is already in progress). */
+  /*
+   * Starts a new optimization run using the provided request payload. No-op if a run is already in progress.
+   * @param request - The full optimization API request including vessels and configuration (required)
+   */
   run(request: OptimizationApiRequest): void {
     if (this._isRunning$.value) return;
 
@@ -112,25 +137,20 @@ export class OptimizationRunnerService {
     this.resultStore.clear();
     this.sub?.unsubscribe();
 
-    // Store the original request so /replan can reuse vessels + config
     this.lastRequest = request;
 
     this.sub = this.api.runOptimization(request).subscribe({
       next: res => {
-        // Capture base assignments for subsequent re-plans
         this.baseAssignments = res.assignments;
         this.vesselDelays.clear();
         this.vesselDelayTypes.clear();
         this.earlyArrivals.clear();
 
         this.resultStore.set(res);
-        // Persist the validated config only when the optimizer succeeds.
         this.paramsStore.persistToLocalStorage();
-        // Fresh run — clear any stale early-complete notification.
         this._earlyCompleteInfo$.next(null);
         this._earlyCompleteError$.next(null);
         this._isRunning$.next(false);
-        // Show the completion toast only when the user has navigated away.
         if (!this.router.url.startsWith('/optimization')) {
           this._showNotification$.next(true);
         }
@@ -142,18 +162,12 @@ export class OptimizationRunnerService {
     });
   }
 
-  // ── Re-planning ───────────────────────────────────────────────────────────
-
-  /**
-   * Apply a delay increment to a vessel and trigger re-planning if needed.
-   *
-   * Accumulates delays per vessel (total, not incremental) and sends the
-   * full accumulated value to the backend each time.  The backend only
-   * re-schedules when the delay causes an actual berth / pilot / tug conflict.
-   *
-   * @param vesselId   Vessel identifier.
-   * @param deltaHours Additional delay hours to add.
-   * @param delayType  "arrival" (vessel not docked yet) or "operation" (vessel at berth).
+  /*
+   * Accumulates a delay increment for the given vessel and triggers a replan call to the backend.
+   * Sends the full accumulated total delay so that replan calls are idempotent.
+   * @param vesselId - Vessel identifier (required)
+   * @param deltaHours - Additional delay hours to add to the vessel's total (required)
+   * @param delayType - Whether the vessel is en route or already at berth (optional, defaults to 'arrival')
    */
   applyDelay(
     vesselId: string,
@@ -165,8 +179,6 @@ export class OptimizationRunnerService {
     const previous = this.vesselDelays.get(vesselId) ?? 0;
     const newTotal  = previous + deltaHours;
     this.vesselDelays.set(vesselId, newTotal);
-    // Last call wins for the delay type (e.g. a vessel can go from on_the_way → in_progress
-    // between successive delay applications)
     this.vesselDelayTypes.set(vesselId, delayType);
 
     const base = this.baseAssignments;
@@ -197,9 +209,6 @@ export class OptimizationRunnerService {
 
     this.sub = this.api.replan(replanReq).subscribe({
       next: res => {
-        // Preserve the greedy-improvement figure from the initial run:
-        // _compute_simple_kpis (used by /replan) always returns 0 for this field,
-        // but the value is meaningful only from the original full optimisation.
         const preservedImprovement = this.resultStore.snapshot?.kpis.improvement_vs_greedy_pct;
         const result: OptimizationApiResult = {
           assignments: res.assignments,
@@ -208,10 +217,6 @@ export class OptimizationRunnerService {
             : res.kpis,
           delay_map:   res.delay_map,
         };
-        // Advance the base snapshot so subsequent replans / early-completes
-        // compose on top of this result instead of the stale original.
-        // Clear accumulated delays/early-arrivals: they are now baked into
-        // the new base, so keeping them would double-apply on the next call.
         this.baseAssignments = res.assignments;
         this.vesselDelays.clear();
         this.vesselDelayTypes.clear();
@@ -223,7 +228,6 @@ export class OptimizationRunnerService {
         }
       },
       error: (err: Error) => {
-        // Roll back the accumulated delay on error so the user can retry
         this.vesselDelays.set(vesselId, previous);
         if (previous === 0) this.vesselDelayTypes.delete(vesselId);
         this._replanError$.next(err.message);
@@ -232,22 +236,20 @@ export class OptimizationRunnerService {
     });
   }
 
-  /** Returns the total accumulated delay for a vessel (for display purposes). */
+  /*
+   * Returns the total accumulated delay hours for the given vessel.
+   * @param vesselId - Vessel identifier to look up (required)
+   * @returns Total accumulated delay in hours (0 if none recorded)
+   */
   getVesselDelay(vesselId: string): number {
     return this.vesselDelays.get(vesselId) ?? 0;
   }
 
-  // ── Early arrival ─────────────────────────────────────────────────────────
-
-  /**
-   * Report that a vessel arrived *earlyH* hours before its scheduled ETA.
-   *
-   * Sends a replan request with `delay_type = "early_arrival"`.  The backend
-   * extends the fondeo phase backwards; berth times do not change (no
-   * conflict possible — the vessel simply waits longer in anchorage).
-   *
-   * @param vesselId Vessel identifier.
-   * @param earlyH   How many hours before ETA the vessel arrived.
+  /*
+   * Reports that a vessel arrived before its scheduled ETA and triggers a replan to extend the fondeo phase.
+   * Berth times are not affected since the vessel simply waits longer in anchorage.
+   * @param vesselId - Vessel identifier (required)
+   * @param earlyH - Number of hours before ETA that the vessel arrived (required)
    */
   applyEarlyArrival(vesselId: string, earlyH: number): void {
     if (this._isReplanning$.value) return;
@@ -261,7 +263,6 @@ export class OptimizationRunnerService {
     if (!base || !req) return;
 
     const delays: VesselDelay[] = [];
-    // Include regular delays
     for (const [vid, dh] of this.vesselDelays.entries()) {
       if (dh > 0) {
         delays.push({
@@ -271,7 +272,6 @@ export class OptimizationRunnerService {
         });
       }
     }
-    // Include early arrivals
     for (const [vid, eh] of this.earlyArrivals.entries()) {
       if (eh > 0) {
         delays.push({ vessel_id: vid, delay_h: eh, delay_type: 'early_arrival' });
@@ -317,29 +317,42 @@ export class OptimizationRunnerService {
     });
   }
 
-  /** Returns the total accumulated early-arrival hours for a vessel (for display purposes). */
+  /*
+   * Returns the total accumulated early-arrival hours for the given vessel.
+   * @param vesselId - Vessel identifier to look up (required)
+   * @returns Total accumulated early-arrival hours (0 if none recorded)
+   */
   getVesselEarlyArrival(vesselId: string): number {
     return this.earlyArrivals.get(vesselId) ?? 0;
   }
 
+  /*
+   * Clears the current replan error and notifies subscribers.
+   */
   clearReplanError(): void {
     this._replanError$.next(null);
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────────────
-
-  /** Cancels an in-progress run and resets state. */
+  /*
+   * Cancels an in-progress optimization run, unsubscribes from the API call, and resets run state.
+   */
   cancelRun(): void {
     this.sub?.unsubscribe();
     this._isRunning$.next(false);
     this._error$.next(null);
   }
 
+  /*
+   * Clears the current optimization error and notifies subscribers.
+   */
   clearError(): void {
     this._error$.next(null);
   }
 
-  /** Clears accumulated delays and early arrivals — call when the optimizer is reset. */
+  /*
+   * Clears all accumulated delays and early arrivals and resets all replan and early-complete state.
+   * Call this when the optimizer is fully reset so subsequent operations start from a clean slate.
+   */
   resetDelays(): void {
     this.vesselDelays.clear();
     this.vesselDelayTypes.clear();
@@ -353,25 +366,26 @@ export class OptimizationRunnerService {
     this._showReplanNotification$.next(false);
   }
 
+  /*
+   * Dismisses the optimization completion notification toast.
+   */
   dismissNotification(): void {
     this._showNotification$.next(false);
   }
 
+  /*
+   * Dismisses the replan or early-complete completion notification toast.
+   */
   dismissReplanNotification(): void {
     this._showReplanNotification$.next(false);
   }
 
-  // ── Early completion ──────────────────────────────────────────────────────
-
-  /**
-   * Notify the backend that *vesselId* finished its cargo operation early.
-   *
-   * The backend truncates the operation, checks pilot / tug availability for
-   * undocking, and optionally pulls forward any vessel waiting in fondeo for
-   * the freed berth.  The updated assignment list is stored in the result store.
-   *
-   * @param vesselId     Vessel identifier.
-   * @param completeTime ISO 8601 string for when the operation completed (use `new Date().toISOString()`).
+  /*
+   * Notifies the backend that a vessel finished its cargo operation early, then updates the result store.
+   * The backend truncates the operation phase, checks resource availability for undocking, and
+   * optionally pulls forward vessels waiting in fondeo for the freed berth.
+   * @param vesselId - Identifier of the vessel that completed early (required)
+   * @param completeTime - ISO 8601 timestamp when the operation finished (required)
    */
   earlyComplete(vesselId: string, completeTime: string): void {
     const base = this.baseAssignments;
@@ -400,14 +414,11 @@ export class OptimizationRunnerService {
             ? { ...res.kpis, improvement_vs_greedy_pct: preservedImprovement }
             : res.kpis,
         };
-        // Update the base snapshot so subsequent replans / early-completes
-        // are relative to the new schedule.
         this.baseAssignments = res.assignments;
         this.resultStore.set(result);
         if (!this.router.url.startsWith('/optimization')) {
           this._showReplanNotification$.next(true);
         }
-        // Surface result details to the UI notification banner.
         this._earlyCompleteInfo$.next({
           waitingUndockH:   res.waiting_undock_h,
           replanTriggered:  res.replan_triggered,
@@ -422,10 +433,16 @@ export class OptimizationRunnerService {
     });
   }
 
+  /*
+   * Clears the early-completion error and notifies subscribers.
+   */
   clearEarlyCompleteError(): void {
     this._earlyCompleteError$.next(null);
   }
 
+  /*
+   * Clears the early-completion result info and notifies subscribers.
+   */
   clearEarlyCompleteInfo(): void {
     this._earlyCompleteInfo$.next(null);
   }

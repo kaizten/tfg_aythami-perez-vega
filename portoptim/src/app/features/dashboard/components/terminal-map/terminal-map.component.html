@@ -1,6 +1,6 @@
 <div class="bg-white rounded-xl border border-outline-variant shadow-card overflow-hidden min-h-[380px] h-full flex flex-col">
 
-  <!-- Card header — relative + z-index keeps it above Leaflet tile layers -->
+  <!-- Card header -->
   <div class="relative z-[1002] bg-white p-lg border-b border-slate-100 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-md">
       <span class="material-symbols-outlined text-teal-600">map</span>
@@ -67,13 +67,13 @@
     </div>
   </div>
 
-  <!-- Map area — explicit height so Leaflet always has concrete dimensions at init -->
+  <!-- Map area -->
   <div class="relative h-[440px] overflow-hidden">
 
-    <!-- Leaflet container — full width/height of explicit parent -->
+    <!-- Leaflet container -->
     <div #mapEl class="w-full h-full"></div>
 
-    <!-- Bottom-left overlay: legend + map-mode toggle -->
+    <!-- Map controls overlay -->
     <div class="absolute bottom-3 left-3 z-[1001] flex items-end gap-2 select-none pointer-events-none">
 
       <!-- Legend -->
@@ -92,16 +92,11 @@
         </div>
       </div>
 
-      <!-- Map-mode toggle card (Google Maps style) -->
+      <!-- Map mode toggle -->
       <button type="button"
               aria-label="Switch map view"
               (click)="setMapMode(mapMode === 'satellite' ? 'street' : 'satellite')"
               class="pointer-events-auto w-[58px] rounded-lg overflow-hidden border-2 border-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer">
-        <!--
-          Thumbnail: zoom 7, tile x=58 y=53 — covers the full Canary Islands
-          including Gran Canaria (~55 % from left, ~66 % from top of the tile).
-          object-position focuses the crop on the island.
-        -->
         <div class="h-[44px] overflow-hidden">
           <img *ngIf="mapMode === 'street'"
                src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/7/53/58"
@@ -116,7 +111,7 @@
                alt="Map view"
                draggable="false">
         </div>
-        <!-- Label: name of the mode you'll switch TO -->
+        <!-- Mode label -->
         <div class="py-[3px] text-center bg-white border-t border-slate-100">
           <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wide leading-none">
             {{ (mapMode === 'satellite' ? 'dash.map.mode.street' : 'dash.map.mode.satellite') | translate }}

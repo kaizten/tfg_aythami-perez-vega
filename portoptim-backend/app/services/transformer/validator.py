@@ -7,7 +7,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Maps input CSV column names to the internal aliases used by the rest of the pipeline.
+# Fixed - mapping from raw CSV column names to internal alias names used by the pipeline
 REQUIRED_COLUMN_MAP: dict[str, str] = {
     "Escala": "call_id",
     "Muelle Real": "berth_id",
@@ -23,28 +23,31 @@ REQUIRED_COLUMN_MAP: dict[str, str] = {
     "Cantidad": "quantity",
 }
 
-# Columns that must be present AND non-null on a row for it to be kept.
+# Fixed - set of internal alias names that must be present and non-null for a row to be kept
 CRITICAL_FIELDS: frozenset[str] = frozenset(
     {"call_id", "berth_id", "arrival_time", "departure_time", "vessel_length", "vessel_gt"}
 )
 
 
 class ValidationResult(NamedTuple):
-    """Outcome of schema-level validation."""
+    """Outcome of schema-level column presence validation."""
 
+    # Computed - True when all required columns are found in the DataFrame
     is_valid: bool
+
+    # Computed - list of required column names that were absent from the DataFrame
     missing_columns: list[str]
 
 
 def validate_schema(df: pd.DataFrame) -> ValidationResult:
     """
-    Check that all required columns are present in *df*.
+    Check that all required columns defined in REQUIRED_COLUMN_MAP are present in df.
 
     Args:
-        df: Raw DataFrame loaded from the uploaded file.
+        df (pd.DataFrame): Raw DataFrame loaded from the uploaded file. Required.
 
     Returns:
-        ValidationResult with is_valid=True when every required column is found,
+        ValidationResult: is_valid=True when every required column is present,
         or is_valid=False with the list of missing column names.
     """
     missing = [col for col in REQUIRED_COLUMN_MAP if col not in df.columns]
@@ -58,16 +61,16 @@ def validate_schema(df: pd.DataFrame) -> ValidationResult:
 
 def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Rename raw input columns to their internal alias names.
+    Rename raw input columns to their internal alias names and drop all extra columns.
 
     Only renames columns that exist in REQUIRED_COLUMN_MAP; any extra columns
-    are dropped so downstream code works with a clean, predictable schema.
+    are dropped so downstream pipeline steps work with a clean, predictable schema.
 
     Args:
-        df: DataFrame that has passed schema validation.
+        df (pd.DataFrame): DataFrame that has passed schema validation. Required.
 
     Returns:
-        New DataFrame with renamed and filtered columns.
+        pd.DataFrame: New DataFrame with renamed columns and only the required fields retained.
     """
     df = df.rename(columns=REQUIRED_COLUMN_MAP)
     return df[list(REQUIRED_COLUMN_MAP.values())].copy()

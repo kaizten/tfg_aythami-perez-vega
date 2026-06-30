@@ -3,17 +3,11 @@ import { NavigationStart, Router } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
 import { OptimizationRunnerService } from '../../../core/services/optimization-runner.service';
 
-/** Auto-dismiss duration in milliseconds. */
+/* Fixed - auto-dismiss duration for the toast in milliseconds */
 const TOAST_DURATION_MS = 6000;
-/** CSS transition duration for the slide animation (must match SCSS). */
+/* Fixed - CSS transition duration for the slide animation; must match the SCSS value */
 const SLIDE_DURATION_MS = 320;
 
-/**
- * Global completion toast that slides in from under the topbar whenever the
- * optimizer finishes while the user is on a page other than /optimization.
- *
- * Declared in SharedModule and rendered once inside LayoutComponent.
- */
 @Component({
   selector: 'app-optimization-toast',
   standalone: false,
@@ -22,25 +16,24 @@ const SLIDE_DURATION_MS = 320;
 })
 export class OptimizationToastComponent implements OnInit, OnDestroy {
 
-  /** Controls DOM presence — kept alive during the slide-out animation. */
+  /* Computed - controls DOM presence; kept true during the slide-out animation to avoid layout jump */
   visible = false;
-  /** CSS state: true = slid in (translateY 0), false = hidden above header. */
+  /* Computed - CSS state flag: true applies translateY(0), false hides the toast above the header */
   sliding = false;
-  /** Progress bar present in DOM. */
+  /* Computed - true while the progress bar element is present in the DOM */
   progressing = false;
-  /** "optimizer" for a full run, "replan" for any replan/early-complete. */
+  /* Computed - distinguishes a full optimizer run toast from a replan or early-complete toast */
   toastType: 'optimizer' | 'replan' = 'optimizer';
-  /**
-   * Activates the drain transition one frame after the bar appears.
-   * Two-flag pattern avoids @keyframes (which linters flag for property changes):
-   * progressing=true renders scaleX(1)/transition:none, then draining=true
-   * triggers the 6 s transition to scaleX(0).
-   */
+  /* Computed - triggers the drain transition one frame after the bar appears to animate scaleX from 1 to 0 */
   draining = false;
 
+  /* Computed - handle for the auto-dismiss setTimeout */
   private autoTimer?:    ReturnType<typeof setTimeout>;
+  /* Computed - handle for the slide-out setTimeout that hides the element after the transition */
   private slideTimer?:   ReturnType<typeof setTimeout>;
+  /* Computed - prevents dismiss from being called multiple times during a single slide-out */
   private dismissing = false;
+  /* Computed - list of active RxJS subscriptions to clean up on destroy */
   private subs: Subscription[] = [];
 
   constructor(
@@ -48,9 +41,11 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     private router: Router,
   ) {}
 
+  /*
+   * Subscribes to optimization and replan notification streams and auto-dismisses when navigating to /optimization.
+   */
   ngOnInit(): void {
     this.subs.push(
-      // Show toast when a run completes outside /optimization.
       this.runner.showNotification$.subscribe(show => {
         if (show) {
           this.toastType = 'optimizer';
@@ -60,7 +55,6 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
         }
       }),
 
-      // Show toast when a replan completes outside /optimization.
       this.runner.showReplanNotification$.subscribe(show => {
         if (show) {
           this.toastType = 'replan';
@@ -70,7 +64,6 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
         }
       }),
 
-      // Auto-dismiss when the user navigates to the optimization page.
       this.router.events
         .pipe(filter(e => e instanceof NavigationStart))
         .subscribe(e => {
@@ -81,8 +74,9 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     );
   }
 
-  // ── Public actions ──────────────────────────────────────────────────────────
-
+  /*
+   * Slides the toast out and notifies the runner service to clear the corresponding notification flag.
+   */
   dismiss(): void {
     if (this.dismissing) return;
     this.dismissing = true;
@@ -95,19 +89,23 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     setTimeout(() => { this.dismissing = false; }, SLIDE_DURATION_MS + 60);
   }
 
+  /*
+   * Dismisses the toast and navigates the user to the optimization page.
+   */
   goToOptimization(): void {
     this.dismiss();
     this.router.navigate(['/optimization']);
   }
 
-  // ── Animation helpers ───────────────────────────────────────────────────────
-
+  /*
+   * Plays the slide-in animation and starts the auto-dismiss timer.
+   * If the toast is already visible, only the timer is restarted.
+   */
   private slideIn(): void {
     clearTimeout(this.autoTimer);
     clearTimeout(this.slideTimer);
 
     if (this.visible && this.sliding) {
-      // Already visible — restart auto-dismiss timer only.
       this.autoTimer = setTimeout(() => this.dismiss(), TOAST_DURATION_MS);
       return;
     }
@@ -117,17 +115,18 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     this.progressing = false;
     this.draining    = false;
 
-    // Frame 1: render the initial -translateY state + progress bar at scaleX(1).
     setTimeout(() => {
       this.sliding     = true;
       this.progressing = true;
-      // Frame 2: start the drain transition (scaleX(1) → scaleX(0) over 6 s).
       setTimeout(() => { this.draining = true; }, 16);
     }, 16);
 
     this.autoTimer = setTimeout(() => this.dismiss(), TOAST_DURATION_MS);
   }
 
+  /*
+   * Plays the slide-out animation and hides the toast element after the transition completes.
+   */
   private slideOut(): void {
     clearTimeout(this.autoTimer);
     this.sliding     = false;
@@ -138,8 +137,9 @@ export class OptimizationToastComponent implements OnInit, OnDestroy {
     }, SLIDE_DURATION_MS);
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
-
+  /*
+   * Clears all pending timers and unsubscribes from all active subscriptions on component destruction.
+   */
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
     clearTimeout(this.autoTimer);

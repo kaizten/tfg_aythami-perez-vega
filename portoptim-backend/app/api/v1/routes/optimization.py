@@ -1,8 +1,9 @@
-"""GET /api/v1/optimize — placeholder route for the optimization engine."""
+"""POST /api/v1/optimize — placeholder route for the optimization engine."""
 
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
+# Fixed - FastAPI router for optimization endpoints, mounted under /optimize
 router = APIRouter(prefix="/optimize", tags=["optimization"])
 
 
@@ -15,10 +16,10 @@ router = APIRouter(prefix="/optimize", tags=["optimization"])
 )
 async def run_optimization() -> JSONResponse:
     """
-    Stub endpoint for the future optimization module.
+    POST /api/v1/optimize/ — stub endpoint for the future optimization module.
 
     Returns:
-        501 Not Implemented with an explanatory message.
+        JSONResponse: HTTP 501 Not Implemented with an explanatory message.
     """
     return JSONResponse(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,

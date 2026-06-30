@@ -1,11 +1,4 @@
-<!--
-  Vessel alert toasts — stacked vertically, newest at the bottom.
-  Each entry slides in and out independently; the outer flex column just
-  provides the spacing between simultaneously-visible cards.
-
-  top-16  = just below the 64px topbar
-  z-1100  = below topbar (z-1200) but above page content
--->
+<!-- Toast container -->
 <div class="fixed top-16 right-8 z-[1100] w-[400px] flex flex-col gap-2 pointer-events-none">
 
   <ng-container *ngFor="let entry of toasts; trackBy: trackByAlert">
@@ -17,7 +10,7 @@
       <div class="pointer-events-auto bg-white rounded-b-2xl shadow-xl
                   border border-slate-200 border-t-0 overflow-hidden">
 
-        <!-- ── Main row ──────────────────────────────────────────────── -->
+        <!-- Main row -->
         <div class="flex items-center gap-md px-lg py-md">
 
           <!-- Type icon -->
@@ -29,7 +22,7 @@
             </span>
           </div>
 
-          <!-- Text block -->
+          <!-- Message area -->
           <div class="flex-1 min-w-0">
             <p class="text-label-md font-semibold text-on-surface">
               {{ 'notif.toast.title' | translate }}
@@ -52,7 +45,7 @@
           </button>
         </div>
 
-        <!-- ── Progress bar ───────────────────────────────────────────── -->
+        <!-- Progress bar -->
         <div class="h-[3px] w-full bg-slate-100">
           <div *ngIf="entry.progressing"
                class="h-full toast-progress-bar"

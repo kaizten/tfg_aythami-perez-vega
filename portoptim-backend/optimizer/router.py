@@ -1,12 +1,4 @@
-"""
-FastAPI router for the berth scheduling optimizer.
-
-Endpoints
----------
-POST /api/v1/optimize/run        — run the optimizer
-GET  /api/v1/optimize/calibration-stats  — inspect loaded calibration models
-POST /api/v1/optimize/calibrate  — load (or reload) a CSV calibration file
-"""
+"""FastAPI router exposing the berth scheduling optimizer via HTTP endpoints."""
 
 from __future__ import annotations
 
@@ -29,19 +21,19 @@ from .models import (
 )
 from .optimizer import Optimizer
 
-# Results are saved one level above the backend root (project data/ folder)
+# Fixed - filesystem path where optimization results are persisted (project data/ folder)
 _DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 logger = structlog.get_logger()
 
+# Fixed - FastAPI router with /optimize prefix and "optimization" tag
 router = APIRouter(prefix="/optimize", tags=["optimization"])
 
-# Module-level singletons — replaced atomically on /calibrate calls
+# Computed - module-level calibration singleton, replaced atomically on /calibrate calls
 _calibration: Optional[Calibration] = None
+# Computed - module-level optimizer singleton, replaced atomically on /calibrate calls
 _optimizer: Optimizer = Optimizer(calibration=None)
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post(
     "/run",
@@ -50,8 +42,13 @@ _optimizer: Optimizer = Optimizer(calibration=None)
 )
 async def run_optimization(request: OptimizationRequest) -> OptimizationResponse:
     """
-    Accept a list of vessels and a port configuration, return an optimised
-    schedule with per-vessel assignments and aggregate KPIs.
+    Accept a list of vessels and a port configuration, run the optimizer, and return an optimised schedule.
+
+    Args:
+        request (OptimizationRequest): Vessels and port configuration to optimize. Required.
+
+    Returns:
+        OptimizationResponse: Per-vessel assignments and aggregate KPI metrics.
     """
     try:
         result = _optimizer.optimize(request)
@@ -66,10 +63,14 @@ async def run_optimization(request: OptimizationRequest) -> OptimizationResponse
 
 
 def _save_optimization_result(result: OptimizationResponse) -> None:
-    """Persist the latest optimization result to data/optimization-results.json."""
+    """
+    Persist the latest optimization result to data/optimization-results.json on the server.
+
+    Args:
+        result (OptimizationResponse): The optimization result to save. Required.
+    """
     try:
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        # assignments and kpis are already plain dicts (list[dict] / dict)
         output = {
             "saved_at": datetime.now().isoformat(),
             "kpis": result.kpis,
@@ -89,13 +90,16 @@ def _save_optimization_result(result: OptimizationResponse) -> None:
 )
 async def replan(request: ReplanRequest) -> ReplanResponse:
     """
-    Accept the current schedule, a list of vessel delays, and the original
-    vessel inputs.  Returns an updated schedule.
+    Accept the current schedule and a list of vessel delays, and return an updated schedule.
 
-    Re-scheduling is only triggered when at least one delay exceeds the vessel's
-    fondeo (anchorage) buffer *and* the resulting shift causes a berth-capacity,
-    pilot, or tug conflict.  Otherwise the delay is absorbed by the fondeo phase
-    and returned immediately without re-running the optimizer.
+    Re-scheduling is only triggered when at least one delay exceeds the vessel's fondeo buffer
+    and the resulting shift causes a berth-capacity, pilot, or tug conflict.
+
+    Args:
+        request (ReplanRequest): Current schedule, delays, port config, and original vessel inputs. Required.
+
+    Returns:
+        ReplanResponse: Updated assignments, KPIs, conflict count, and affected vessel list.
     """
     try:
         return _optimizer.replan(request)
@@ -114,11 +118,17 @@ async def replan(request: ReplanRequest) -> ReplanResponse:
 )
 async def early_complete(request: EarlyCompleteRequest) -> EarlyCompleteResponse:
     """
-    Called when a vessel finishes its cargo operation before its scheduled end.
+    Called when a vessel finishes its cargo operation before its scheduled end time.
 
-    Truncates ``ejecucion``, checks pilot / tug availability for undocking,
-    adds a ``waiting_undock`` phase (light purple) when resources are busy,
-    and optionally pulls forward any vessel waiting in fondeo for the freed berth.
+    Truncates ejecucion, checks pilot and tug availability for undocking, adds a
+    waiting_undock phase when resources are busy, and optionally pulls forward any
+    vessel waiting in fondeo for the freed berth.
+
+    Args:
+        request (EarlyCompleteRequest): Vessel ID, actual completion time, current schedule, and port config. Required.
+
+    Returns:
+        EarlyCompleteResponse: Updated assignments, KPIs, and early-completion metrics.
     """
     try:
         return _optimizer.early_complete(request)
@@ -140,7 +150,12 @@ async def early_complete(request: EarlyCompleteRequest) -> EarlyCompleteResponse
     summary="Show calibration model statistics",
 )
 async def calibration_stats() -> dict:
-    """Return rate_model and duration_model entry counts plus learned overlap factor."""
+    """
+    Return rate_model and duration_model entry counts plus the learned overlap factor.
+
+    Returns:
+        dict: Calibration statistics, or a status message when no calibration has been loaded.
+    """
     if _calibration is None:
         return {
             "status": "no_calibration",
@@ -155,8 +170,15 @@ async def calibration_stats() -> dict:
 )
 async def calibrate(csv_path: str) -> dict:
     """
-    Fit the statistical models from a historical CSV file at *csv_path*
-    (server-side path).  Replaces any previously loaded calibration.
+    Fit statistical models from a historical CSV file at the given server-side path.
+
+    Replaces any previously loaded calibration and rebuilds the optimizer singleton.
+
+    Args:
+        csv_path (str): Absolute server-side path to the historical CSV file. Required.
+
+    Returns:
+        dict: Calibration statistics for the newly fitted models.
     """
     global _calibration, _optimizer
     try:

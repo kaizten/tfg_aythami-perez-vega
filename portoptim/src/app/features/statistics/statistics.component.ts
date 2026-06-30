@@ -5,8 +5,6 @@ import { LanguageService } from '../../core/services/language.service';
 import { OptimizationResultStoreService } from '../../core/services/optimization-result-store.service';
 import { TransformationStoreService } from '../../core/services/transformation-store.service';
 
-// ── Interfaces ──────────────────────────────────────────────────────────────
-
 interface BerthOccupancy {
   berth: string;
   hours: number;
@@ -55,9 +53,6 @@ interface KpiCard {
   icon: string;
 }
 
-// ── Optimizer-specific stat interfaces ──────────────────────────────────────
-
-/** Optimizer monthly stat — mirrors MonthStat for the CSV view. */
 interface OptiMonthStat {
   key: string;
   year: number;
@@ -69,20 +64,15 @@ interface OptiMonthStat {
   berthOccupancy: BerthOccupancy[];
   opBreakdown: OpBreakdown[];
   cargoBreakdown: CargoBreakdown[];
-  // FTE estimate: total work-hours / available hours per pilot (8 h/day, 40 h/week, ceil per manoeuvre)
   pilotsNeededFte: number;
   tugsNeededFte: number;
-  // Resource wait totals
   pilotWaitH: number;
   tugWaitH: number;
   waitUndockH: number;
-  // Constrained peak (≤ configured fleet)
   peakPilots: number;
   peakTugs: number;
-  // Peak + simultaneous waiters (minimum for coverage)
   trueMinPilots: number;
   trueMinTugs: number;
-  // Final minimum = max(trueMin, FTE) — shown in the bars
   finalMinPilots: number;
   finalMinTugs: number;
 }
@@ -95,20 +85,18 @@ interface PhaseStat {
   colorClass: string;
 }
 
-/** One bucket in the waiting-time vertical bar chart. */
 interface WaitBucket {
-  labelKey: string;   // translation key for label
-  shortLabel: string; // short label shown under the bar
+  labelKey: string;
+  shortLabel: string;
   count: number;
   barPct: number;
 }
 
-/** Anchorage (fondeo) hours aggregated per berth. */
 interface BerthAnchorageStat {
   berth: string;
   totalFondeoH: number;
   avgFondeoH: number;
-  vesselCount: number;   // vessels that had fondeo > 0
+  vesselCount: number;
   barPct: number;
 }
 
@@ -118,49 +106,36 @@ interface DurSourceStat {
   pct: number;
 }
 
-/**
- * Counts of vessels affected by each kind of schedule-change event.
- * A single vessel can appear in more than one category.
- */
 interface ReplanChangeStat {
-  /** Vessels with a berth-operation delay (delay phase inserted after ejecucion). */
   operationDelay: number;
-  /** Vessels where the user confirmed early cargo completion (early_complete === true). */
   earlyComplete: number;
-  /** Vessels with a scheduling-induced undock resource wait (waiting_undock, NOT user early-complete). */
   undockWait: number;
-  /** Vessels with an arrival delay (delay phase prepended before fondeo). */
   arrivalDelay: number;
-  /** Vessels that arrived earlier than their scheduled ETA (early_arrival_h set). */
   earlyArrival: number;
-  /** Total assigned vessels — used as denominator for percentages. */
   totalAssigned: number;
 }
 
-/** Per-hour counts for the docking/undocking phase-start distribution chart. */
 interface PhaseHourStat {
   hour: number;
   atraqueCount: number;
   desatraqueCount: number;
-  atraquePct: number;    // height % relative to max across both series
+  atraquePct: number;
   desatraquePct: number;
 }
 
-/** Yearly peak resource requirement — aggregated from monthly stats. */
 interface OptiYearResource {
   year: number;
   totalWaitUndockH: number;
-  finalMinPilots: number;    // max over months of max(trueMinPilots, pilotsNeededFte)
+  finalMinPilots: number;
   finalMinTugs: number;
   totalPilotWaitH: number;
   totalTugWaitH: number;
 }
 
-
-// ── Constants ───────────────────────────────────────────────────────────────
-
+/* Fixed - number of months shown in each sliding window panel */
 const DUR_WINDOW = 6;
 
+/* Fixed - mapping from raw operation type strings to i18n translation keys */
 const OP_TYPE_KEY: Record<string, string> = {
   'Desembarque': 'op.type.desembarque',
   'Embarque':    'op.type.embarque',
@@ -168,6 +143,7 @@ const OP_TYPE_KEY: Record<string, string> = {
   'Residuos':    'op.type.residuos',
 };
 
+/* Fixed - mapping from raw cargo group strings to i18n translation keys */
 const CARGO_GROUP_KEY: Record<string, string> = {
   'Abonos':                      'cargo.group.abonos',
   'Agro-Ganadero y Alimentario': 'cargo.group.agro_ganadero',
@@ -182,14 +158,13 @@ const CARGO_GROUP_KEY: Record<string, string> = {
   'Vehículos y transporte':      'cargo.group.vehiculos_transporte',
 };
 
+/* Fixed - mapping from language codes to BCP-47 locale strings used for date formatting */
 const LANG_LOCALE: Record<string, string> = {
   en: 'en-GB',
   es: 'es-ES',
   de: 'de-DE',
   fr: 'fr-FR',
 };
-
-// ── Component ───────────────────────────────────────────────────────────────
 
 @Component({
   selector: 'app-statistics',
@@ -198,40 +173,59 @@ const LANG_LOCALE: Record<string, string> = {
   styleUrl: './statistics.component.scss',
 })
 export class StatisticsComponent implements OnInit, OnDestroy {
-  // ── CSV state ──────────────────────────────────────────────────────────────
+  /* Computed - whether the CSV transformation result store contains data */
   hasData = false;
+  /* Computed - KPI cards derived from the loaded CSV dataset */
   kpis: KpiCard[] = [];
+  /* Computed - monthly statistics aggregated from the CSV dataset */
   months: MonthStat[] = [];
+  /* Computed - per-hour arrival and departure counts from the CSV dataset */
   arrivalHours: ArrivalHour[] = [];
 
+  /* Fixed - re-exported window size constant for use in the template */
   readonly DUR_WINDOW = DUR_WINDOW;
+  /* Computed - index of the first month shown in the duration/cargo sliding window */
   durWindowStart = 0;
+  /* User-provided - index of the month selected in the CSV detail panel */
   selectedMonthIndex = 0;
 
-  // ── Data-source toggle ─────────────────────────────────────────────────────
+  /* User-provided - active data source tab selected by the user */
   dataSource: 'csv' | 'optimizer' = 'csv';
+  /* Computed - whether the optimizer result store contains a result */
   hasOptimizerResult = false;
 
-  // ── Optimizer stats state ──────────────────────────────────────────────────
-  // Monthly grouping (mirrors CSV structure)
+  /* Computed - KPI cards derived from the optimizer result */
   optiKpis: KpiCard[]             = [];
+  /* Computed - monthly statistics aggregated from the optimizer assignments */
   optiMonths: OptiMonthStat[]     = [];
+  /* Computed - index of the first month shown in the optimizer duration/cargo window */
   optiMonthWindowStart            = 0;
+  /* User-provided - index of the month selected in the optimizer detail panel */
   optiSelectedMonthIndex          = 0;
+  /* Computed - per-hour docking and undocking phase-start counts from optimizer result */
   optiScheduledHours: PhaseHourStat[] = [];
-  // Optimizer-specific extras
+  /* Computed - operation phase totals and averages derived from optimizer assignments */
   optiPhases: PhaseStat[]          = [];
+  /* Computed - waiting time distribution buckets computed from optimizer assignments */
   optiWaitBuckets: WaitBucket[]    = [];
+  /* Computed - anchorage hours aggregated per berth from optimizer assignments */
   optiBerthAnchorage: BerthAnchorageStat[] = [];
+  /* Computed - duration source breakdown derived from optimizer KPI data */
   optiDurSources: DurSourceStat[]  = [];
+  /* Computed - counts of replan change events derived from optimizer assignments */
   optiReplanChanges: ReplanChangeStat | null = null;
+  /* Computed - average waiting time in hours across all assigned vessels */
   optiAvgWaitH = 0;
-  // Resource allocation 6-month window (independent from dur+cargo window)
+  /* Computed - index of the first month shown in the optimizer resource allocation window */
   optiResourceWindowStart = 0;
+  /* Computed - yearly minimum staffing requirements aggregated from monthly data */
   optiYearResources: OptiYearResource[] = [];
 
+  /* Computed - last received CSV transformation response, cached for language re-render */
   private cachedResult: TransformApiResponse | null = null;
+  /* Computed - last received optimizer result, cached for language re-render */
   private cachedOptiResult: OptimizationApiResult | null = null;
+  /* Fixed - collection of active RxJS subscriptions, cleaned up on destroy */
   private subs: Subscription[] = [];
 
   constructor(
@@ -240,6 +234,9 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     private lang: LanguageService,
   ) {}
 
+  /*
+   * Subscribes to store and language observables to build statistics whenever data changes.
+   */
   ngOnInit(): void {
     this.subs.push(
       this.transformStore.result$.subscribe(r => {
@@ -253,7 +250,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         this.hasOptimizerResult = !!r;
         if (r) this.buildOptimizerStats(r);
         else {
-          // Optimizer was reset → fall back to CSV view
           this.dataSource = 'csv';
           this.optiKpis = []; this.optiMonths = [];
           this.optiMonthWindowStart = 0; this.optiSelectedMonthIndex = 0;
@@ -272,16 +268,26 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     );
   }
 
+  /*
+   * Switches the active statistics view between the CSV dataset and the optimizer result.
+   * @param src - The data source to activate ('csv' or 'optimizer')
+   */
   setDataSource(src: 'csv' | 'optimizer'): void {
     this.dataSource = src;
   }
 
-  // ── Optimizer: month window navigation (mirrors CSV dur-window) ─────────
-
+  /*
+   * Returns the slice of optimizer months currently visible in the duration/cargo window.
+   * @returns Array of OptiMonthStat for the current window
+   */
   get optiMonthWindow(): OptiMonthStat[] {
     return this.optiMonths.slice(this.optiMonthWindowStart, this.optiMonthWindowStart + DUR_WINDOW);
   }
 
+  /*
+   * Returns a human-readable label describing the date range of the optimizer month window.
+   * @returns Formatted date range string, or empty string if the window is empty
+   */
   get optiMonthWindowLabel(): string {
     const w = this.optiMonthWindow;
     if (!w.length) return '';
@@ -289,47 +295,79 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return w.length === 1 ? first : `${first} – ${this.monthLabel(w[w.length - 1].year, w[w.length - 1].month)}`;
   }
 
+  /*
+   * Returns the exclusive end index of the optimizer month window within optiMonths.
+   * @returns End index clamped to the total number of optimizer months
+   */
   get optiMonthWindowEnd(): number {
     return Math.min(this.optiMonthWindowStart + DUR_WINDOW, this.optiMonths.length);
   }
 
+  /*
+   * Returns the maximum average duration value across months in the optimizer window, used to scale bar heights.
+   * @returns Maximum avgDuration value, at least 1
+   */
   get maxOptiDurValue(): number {
     return Math.max(...this.optiMonthWindow.map(m => m.avgDuration), 1);
   }
 
+  /*
+   * Returns the maximum total cargo quantity across months in the optimizer window, used to scale bar heights.
+   * @returns Maximum totalQuantity value, at least 1
+   */
   get maxOptiCargoValue(): number {
     return Math.max(...this.optiMonthWindow.map(m => m.totalQuantity), 1);
   }
 
+  /*
+   * Shifts the optimizer duration/cargo window backwards by one window size.
+   */
   prevOptiMonthWindow(): void {
     this.optiMonthWindowStart = Math.max(0, this.optiMonthWindowStart - DUR_WINDOW);
   }
 
+  /*
+   * Shifts the optimizer duration/cargo window forwards by one window size.
+   */
   nextOptiMonthWindow(): void {
     if (this.optiMonthWindowStart + DUR_WINDOW < this.optiMonths.length)
       this.optiMonthWindowStart = Math.min(this.optiMonths.length - 1, this.optiMonthWindowStart + DUR_WINDOW);
   }
 
-  // ── Optimizer: month navigation for detail panel (mirrors CSV) ───────────
-
+  /*
+   * Returns the currently selected optimizer month stat for the detail panel.
+   * @returns The selected OptiMonthStat, or null if no months are available
+   */
   get optiSelectedMonth(): OptiMonthStat | null {
     return this.optiMonths[this.optiSelectedMonthIndex] ?? null;
   }
 
+  /*
+   * Navigates to the previous month in the optimizer detail panel.
+   */
   prevOptiMonth(): void {
     if (this.optiSelectedMonthIndex > 0) this.optiSelectedMonthIndex--;
   }
 
+  /*
+   * Navigates to the next month in the optimizer detail panel.
+   */
   nextOptiMonth(): void {
     if (this.optiSelectedMonthIndex < this.optiMonths.length - 1) this.optiSelectedMonthIndex++;
   }
 
-  // ── Optimizer: resource-allocation window navigation (independent) ────────
-
+  /*
+   * Returns the slice of optimizer months currently visible in the resource allocation window.
+   * @returns Array of OptiMonthStat for the current resource window
+   */
   get optiResourceWindow(): OptiMonthStat[] {
     return this.optiMonths.slice(this.optiResourceWindowStart, this.optiResourceWindowStart + DUR_WINDOW);
   }
 
+  /*
+   * Returns a human-readable label for the date range covered by the resource allocation window.
+   * @returns Formatted date range string, or empty string if the window is empty
+   */
   get optiResourceWindowLabel(): string {
     const w = this.optiResourceWindow;
     if (!w.length) return '';
@@ -337,40 +375,70 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return w.length === 1 ? first : `${first} – ${this.monthLabel(w[w.length - 1].year, w[w.length - 1].month)}`;
   }
 
+  /*
+   * Returns the exclusive end index of the resource window within optiMonths.
+   * @returns End index clamped to the total number of optimizer months
+   */
   get optiResourceWindowEnd(): number {
     return Math.min(this.optiResourceWindowStart + DUR_WINDOW, this.optiMonths.length);
   }
 
+  /*
+   * Returns the maximum finalMinPilots value across months in the resource window, used to scale pilot bars.
+   * @returns Maximum pilot requirement, at least 1
+   */
   get maxOptiResourcePilots(): number {
     return Math.max(...this.optiResourceWindow.map(m => m.finalMinPilots), 1);
   }
 
+  /*
+   * Returns the maximum finalMinTugs value across months in the resource window, used to scale tug bars.
+   * @returns Maximum tug requirement, at least 1
+   */
   get maxOptiResourceTugs(): number {
     return Math.max(...this.optiResourceWindow.map(m => m.finalMinTugs), 1);
   }
 
-  /** Max count across all replan-change categories — used to scale bar widths. */
+  /*
+   * Returns the highest count across all replan-change categories, used to scale bar widths in the chart.
+   * @returns Maximum replan change count, at least 1
+   */
   get optiReplanMaxCount(): number {
     if (!this.optiReplanChanges) return 1;
     const { operationDelay, earlyComplete, undockWait, arrivalDelay, earlyArrival } = this.optiReplanChanges;
     return Math.max(operationDelay, earlyComplete, undockWait, arrivalDelay, earlyArrival, 1);
   }
 
-  /** Percentage of assigned vessels for a given replan-change count. */
+  /*
+   * Computes the percentage of assigned vessels represented by a given replan-change count.
+   * @param count - Number of vessels affected by a specific change type
+   * @returns Percentage relative to total assigned vessels, or 0 if unavailable
+   */
   replanPct(count: number): number {
     if (!this.optiReplanChanges || this.optiReplanChanges.totalAssigned === 0) return 0;
     return count / this.optiReplanChanges.totalAssigned * 100;
   }
 
+  /*
+   * Returns the total number of docking (atraque) starts across all hours of the day.
+   * @returns Sum of atraqueCount values across all PhaseHourStat entries
+   */
   get optiTotalAtraque(): number {
     return this.optiScheduledHours.reduce((s, h) => s + h.atraqueCount, 0);
   }
 
+  /*
+   * Returns the total number of undocking (desatraque) starts across all hours of the day.
+   * @returns Sum of desatraqueCount values across all PhaseHourStat entries
+   */
   get optiTotalDesatraque(): number {
     return this.optiScheduledHours.reduce((s, h) => s + h.desatraqueCount, 0);
   }
 
-  /** Hour-of-day with the most docking (atraque) starts. */
+  /*
+   * Returns the hour of day with the highest number of docking (atraque) phase starts.
+   * @returns Hour index (0–23) with peak atraque count, or 0 if no data
+   */
   get optiPeakAtraqueHour(): number {
     if (!this.optiScheduledHours.length) return 0;
     return this.optiScheduledHours.reduce((best, h) =>
@@ -378,7 +446,10 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     ).hour;
   }
 
-  /** Hour-of-day with the most undocking (desatraque) starts. */
+  /*
+   * Returns the hour of day with the highest number of undocking (desatraque) phase starts.
+   * @returns Hour index (0–23) with peak desatraque count, or 0 if no data
+   */
   get optiPeakDesatraqueHour(): number {
     if (!this.optiScheduledHours.length) return 0;
     return this.optiScheduledHours.reduce((best, h) =>
@@ -386,21 +457,33 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     ).hour;
   }
 
+  /*
+   * Shifts the resource allocation window backwards by one window size.
+   */
   prevOptiResourceWindow(): void {
     this.optiResourceWindowStart = Math.max(0, this.optiResourceWindowStart - DUR_WINDOW);
   }
 
+  /*
+   * Shifts the resource allocation window forwards by one window size.
+   */
   nextOptiResourceWindow(): void {
     if (this.optiResourceWindowStart + DUR_WINDOW < this.optiMonths.length)
       this.optiResourceWindowStart = Math.min(this.optiMonths.length - 1, this.optiResourceWindowStart + DUR_WINDOW);
   }
 
-  // ── Duration + Cargo window navigation ───────────────────────────────────
-
+  /*
+   * Returns the slice of CSV months currently visible in the duration/cargo sliding window.
+   * @returns Array of MonthStat for the current window
+   */
   get durWindowMonths(): MonthStat[] {
     return this.months.slice(this.durWindowStart, this.durWindowStart + DUR_WINDOW);
   }
 
+  /*
+   * Returns a human-readable label for the date range of the CSV duration/cargo window.
+   * @returns Formatted date range string, or empty string if the window is empty
+   */
   get durWindowLabel(): string {
     const w = this.durWindowMonths;
     if (!w.length) return '';
@@ -408,46 +491,76 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return w.length === 1 ? first : `${first} – ${this.monthLabel(w[w.length - 1].year, w[w.length - 1].month)}`;
   }
 
+  /*
+   * Returns the exclusive end index of the CSV duration window within months.
+   * @returns End index clamped to the total number of CSV months
+   */
   get durWindowEnd(): number {
     return Math.min(this.durWindowStart + DUR_WINDOW, this.months.length);
   }
 
+  /*
+   * Returns the maximum average duration value across months in the CSV window, used to scale bar heights.
+   * @returns Maximum avgDuration value, at least 1
+   */
   get maxDurValue(): number {
     return Math.max(...this.durWindowMonths.map(m => m.avgDuration), 1);
   }
 
+  /*
+   * Returns the maximum total cargo quantity across months in the CSV window, used to scale bar heights.
+   * @returns Maximum totalQuantity value, at least 1
+   */
   get maxCargoValue(): number {
     return Math.max(...this.durWindowMonths.map(m => m.totalQuantity), 1);
   }
 
+  /*
+   * Shifts the CSV duration/cargo window backwards by one window size.
+   */
   prevDurWindow(): void {
     if (this.durWindowStart > 0) {
       this.durWindowStart = Math.max(0, this.durWindowStart - DUR_WINDOW);
     }
   }
 
+  /*
+   * Shifts the CSV duration/cargo window forwards by one window size.
+   */
   nextDurWindow(): void {
     if (this.durWindowStart + DUR_WINDOW < this.months.length) {
       this.durWindowStart = Math.min(this.months.length - 1, this.durWindowStart + DUR_WINDOW);
     }
   }
 
-  // ── Month navigation (detail panel) ──────────────────────────────────────
-
+  /*
+   * Returns the currently selected CSV month stat for the detail panel.
+   * @returns The selected MonthStat, or null if no months are available
+   */
   get selectedMonth(): MonthStat | null {
     return this.months[this.selectedMonthIndex] ?? null;
   }
 
+  /*
+   * Navigates to the previous month in the CSV detail panel.
+   */
   prevMonth(): void {
     if (this.selectedMonthIndex > 0) this.selectedMonthIndex--;
   }
 
+  /*
+   * Navigates to the next month in the CSV detail panel.
+   */
   nextMonth(): void {
     if (this.selectedMonthIndex < this.months.length - 1) this.selectedMonthIndex++;
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
+  /*
+   * Formats a year and month number into a localized short month-year string.
+   * @param year - Four-digit year number
+   * @param month - One-based month number (1–12)
+   * @returns Localized string such as "Jan 2024" in the current UI language
+   */
   monthLabel(year: number, month: number): string {
     const locale = LANG_LOCALE[this.lang.current] ?? 'es-ES';
     return new Date(year, month - 1, 1).toLocaleDateString(locale, {
@@ -456,13 +569,22 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /*
+   * Formats a numeric quantity into a human-readable abbreviated string.
+   * @param q - Raw numeric quantity
+   * @returns Abbreviated string such as "1.2M", "500k", or "42"
+   */
   formatQuantity(q: number): string {
     if (q >= 1_000_000) return `${(q / 1_000_000).toFixed(1)}M`;
     if (q >= 1_000)     return `${(q / 1_000).toFixed(0)}k`;
     return q.toFixed(0);
   }
 
-  /** Convert decimal hours to "hh:mm" string, e.g. 24.5 → "24:30". */
+  /*
+   * Converts a decimal hours value to a compact duration string with years, days, hours, and minutes.
+   * @param h - Duration in decimal hours (e.g. 24.5)
+   * @returns Formatted string such as "1d 0h 30m", or "0m" for zero duration
+   */
   formatHours(h: number): string {
     const totalMinutes = Math.round(h * 60);
     const years   = Math.floor(totalMinutes / 525_600);
@@ -477,12 +599,19 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return parts.length ? parts.join(' ') : '0m';
   }
 
+  /*
+   * Left-pads a single-digit hour number with a leading zero for display in time labels.
+   * @param h - Hour integer (0–23)
+   * @returns Two-character string such as "07" or "14"
+   */
   padHour(h: number): string {
     return h.toString().padStart(2, '0');
   }
 
-  // ── Stats builder ─────────────────────────────────────────────────────────
-
+  /*
+   * Builds the four KPI cards from a CSV transformation response and updates the current language locale.
+   * @param result - The transformation API response containing berth call records
+   */
   private buildKpis(result: TransformApiResponse): void {
     const calls = result.data;
     const uniqueBerths = new Set(calls.map(c => c.berth_id)).size;
@@ -501,6 +630,10 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     ];
   }
 
+  /*
+   * Builds all CSV statistics (KPIs, monthly stats, arrival hour distribution) from a transformation response.
+   * @param result - The transformation API response containing berth call records
+   */
   private buildStats(result: TransformApiResponse): void {
     const calls = result.data;
     if (!calls.length) { this.clearStats(); return; }
@@ -513,6 +646,11 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     this.selectedMonthIndex = 0;
   }
 
+  /*
+   * Groups berth calls by calendar month and computes aggregated statistics for each month.
+   * @param calls - Array of berth call records from the CSV dataset
+   * @returns Array of MonthStat objects sorted chronologically
+   */
   private computeMonths(calls: BerthCall[]): MonthStat[] {
     const monthMap = new Map<string, BerthCall[]>();
     for (const call of calls) {
@@ -547,6 +685,13 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       });
   }
 
+  /*
+   * Computes berth occupancy percentages for a given calendar month from CSV berth call records.
+   * @param calls - Berth call records belonging to the target month
+   * @param year - Four-digit year of the target month
+   * @param month - One-based month number of the target month
+   * @returns Array of BerthOccupancy entries sorted by descending occupancy percentage
+   */
   private computeBerthOccupancy(calls: BerthCall[], year: number, month: number): BerthOccupancy[] {
     const monthStartMs = new Date(year, month - 1, 1).getTime();
     const monthEndMs   = new Date(year, month,     1).getTime();
@@ -576,6 +721,11 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return entries;
   }
 
+  /*
+   * Computes the breakdown of operation types from a set of berth calls, splitting compound types.
+   * @param calls - Berth call records to analyse
+   * @returns Array of OpBreakdown entries sorted by descending count
+   */
   private computeOpBreakdown(calls: BerthCall[]): OpBreakdown[] {
     const opMap = new Map<string, number>();
     for (const call of calls) {
@@ -592,6 +742,11 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.count - a.count);
   }
 
+  /*
+   * Computes the breakdown of cargo groups from a set of berth calls.
+   * @param calls - Berth call records to analyse
+   * @returns Array of CargoBreakdown entries sorted by descending count
+   */
   private computeCargoBreakdown(calls: BerthCall[]): CargoBreakdown[] {
     const groupMap = new Map<string, number>();
     for (const call of calls) {
@@ -605,6 +760,11 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.count - a.count);
   }
 
+  /*
+   * Counts arrival and departure events per hour of the day across all berth calls.
+   * @param calls - Berth call records to analyse
+   * @returns Array of 24 ArrivalHour entries (one per hour), with normalized bar percentages
+   */
   private computeArrivalHours(calls: BerthCall[]): ArrivalHour[] {
     const arrivals   = new Array(24).fill(0);
     const departures = new Array(24).fill(0);
@@ -622,6 +782,10 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     }));
   }
 
+  /*
+   * Returns the hour of day with the most vessel arrivals in the CSV dataset.
+   * @returns Hour index (0–23) with peak arrival count, or 0 if no data
+   */
   get peakArrivalHour(): number {
     if (!this.arrivalHours.length) return 0;
     return this.arrivalHours.reduce((best, h) =>
@@ -629,6 +793,10 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     ).hour;
   }
 
+  /*
+   * Returns the hour of day with the most vessel departures in the CSV dataset.
+   * @returns Hour index (0–23) with peak departure count, or 0 if no data
+   */
   get peakDepartureHour(): number {
     if (!this.arrivalHours.length) return 0;
     return this.arrivalHours.reduce((best, h) =>
@@ -636,14 +804,15 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     ).hour;
   }
 
-  // ── Optimizer stats builder ───────────────────────────────────────────────
-
+  /*
+   * Builds all optimizer statistics from an optimization API result, including KPIs, monthly groupings,
+   * phase distributions, resource requirements, and replan-change breakdowns.
+   * @param result - The optimization API result containing assignments and KPI data
+   */
   private buildOptimizerStats(result: OptimizationApiResult): void {
     const { assignments, kpis } = result;
     const assigned     = assignments.filter(a => a.status === 'assigned');
     const uniqueBerths = new Set(assigned.map(a => a.berth_id)).size;
-    // Total stay = fondeo + atraque + ejecucion + desatraque (sum of all phases).
-    // Falls back to waiting_time_h + duration_estimated_h when phases are absent.
     const avgDuration = assigned.length
       ? assigned.reduce((s, a) => {
           const totalH = a.phases?.length
@@ -653,12 +822,10 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         }, 0) / assigned.length
       : 0;
 
-    // Join assignments → BerthCalls for cargo/op-type info
     const callMap = new Map<string, BerthCall>(
       (this.cachedResult?.data ?? []).map(c => [c.call_id, c])
     );
 
-    // ── KPIs (same 4-card layout as CSV) ─────────────────────────────────
     this.optiKpis = [
       { label: 'stats.opt.kpi.assigned',    value: `${assigned.length} / ${assignments.length}`, sub: 'stats.opt.kpi.assigned_sub',    icon: 'directions_boat' },
       { label: 'stats.opt.kpi.berths',      value: String(uniqueBerths),                          sub: 'stats.opt.kpi.berths_sub',      icon: 'dock'            },
@@ -666,7 +833,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       { label: 'stats.opt.kpi.improvement', value: `${kpis.improvement_vs_greedy_pct >= 0 ? '+' : ''}${kpis.improvement_vs_greedy_pct.toFixed(1)}%`, sub: 'stats.opt.kpi.improvement_sub', icon: 'trending_up' },
     ];
 
-    // ── Monthly grouping (mirrors CSV MonthStat structure) ───────────────
     const monthMap = new Map<string, typeof assigned>();
     for (const a of assigned) {
       const d = new Date(a.scheduled_start);
@@ -680,8 +846,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       const month = parseInt(monthStr, 10);
       const mAssigns = monthMap.get(key)!;
       const mCalls   = mAssigns.map(a => callMap.get(a.vessel_id)).filter((c): c is BerthCall => !!c);
-      // Total stay = fondeo + atraque + ejecucion + desatraque (sum of all phases).
-      // Falls back to waiting_time_h + (scheduled_end − scheduled_start) when phases absent.
       const avgDuration = mAssigns.length
         ? mAssigns.reduce((s, a) => {
             const totalH = a.phases?.length
@@ -705,7 +869,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         cargoBreakdown: this.computeCargoBreakdown(mCalls),
         ...fteRes,
         ...waitRes,
-        // Combined minimum: coverage (peak + waiters) vs capacity (work-hours / FTE)
         finalMinPilots: Math.max(waitRes.trueMinPilots, fteRes.pilotsNeededFte),
         finalMinTugs:   Math.max(waitRes.trueMinTugs,   fteRes.tugsNeededFte),
       };
@@ -714,7 +877,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     this.optiMonthWindowStart    = 0;
     this.optiResourceWindowStart = 0;
 
-    // ── Yearly minimum staffing (max of monthly finalMin values) ─────────
     const yearSet = new Set(this.optiMonths.map(m => m.year));
     this.optiYearResources = Array.from(yearSet).sort().map(year => {
       const yearMonths = this.optiMonths.filter(m => m.year === year);
@@ -728,9 +890,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       };
     });
 
-    // ── Docking / undocking phase-start distribution ─────────────────────
-    // atraque starts at scheduled_start (fondeo is before it).
-    // desatraque starts at scheduled_start + atraque.duration_h + ejecucion.duration_h.
     const atraqueCounts    = new Array(24).fill(0);
     const desatraqueCounts = new Array(24).fill(0);
     for (const a of assigned) {
@@ -749,7 +908,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       desatraquePct: desatraqueCounts[hour]  / maxPhaseCount * 100,
     }));
 
-    // ── [EXTRA] Operation phases ──────────────────────────────────────────
     const PHASE_ORDER = ['fondeo', 'atraque', 'ejecucion', 'desatraque'];
     const PHASE_CLR: Record<string, string> = {
       fondeo: 'bg-amber-400', atraque: 'bg-sky-500', ejecucion: 'bg-emerald-500', desatraque: 'bg-violet-500',
@@ -773,11 +931,9 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     const maxPhaseH = Math.max(...phaseRaw.map(p => p.totalH), 1);
     this.optiPhases = phaseRaw.map(p => ({ ...p, barPct: p.totalH / maxPhaseH * 100 }));
 
-    // ── [EXTRA] Avg waiting time ──────────────────────────────────────────
     this.optiAvgWaitH = assigned.length
       ? assigned.reduce((s, a) => s + a.waiting_time_h, 0) / assigned.length : 0;
 
-    // ── [EXTRA] Waiting time vertical bar chart ───────────────────────────
     const WAIT_BUCKETS = [
       { labelKey: 'stats.opt.wait.no_wait',   shortLabel: '0 h',     max: 0        },
       { labelKey: 'stats.opt.wait.low',        shortLabel: '1–10 h',  max: 10       },
@@ -799,7 +955,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
       count: bucketCounts[i], barPct: bucketCounts[i] / maxBucket * 100,
     }));
 
-    // ── [EXTRA] Anchorage (fondeo) hours per berth ────────────────────────
     const berthFondeoMap = new Map<string, number[]>();
     for (const a of assigned) {
       const fp = a.phases?.find(p => p.name === 'fondeo');
@@ -820,20 +975,12 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     const maxFondeoH = Math.max(...berthAnchorRaw.map(b => b.totalFondeoH), 1);
     this.optiBerthAnchorage = berthAnchorRaw.map(b => ({ ...b, barPct: b.totalFondeoH / maxFondeoH * 100 }));
 
-    // ── [EXTRA] Duration sources ──────────────────────────────────────────
     const dsTotal = Object.values(kpis.duration_source_breakdown).reduce((s, n) => s + n, 0) || 1;
     this.optiDurSources = Object.entries(kpis.duration_source_breakdown)
       .filter(([, count]) => count > 0)
       .map(([source, count]) => ({ labelKey: `stats.opt.dur_source.${source}`, count, pct: count / dsTotal * 100 }))
       .sort((a, b) => b.count - a.count);
 
-    // ── [EXTRA] Schedule-change breakdown ────────────────────────────────
-    // Detect change types:
-    //   Arrival delay      → 'delay' phase is FIRST (prepended before fondeo)
-    //   Operation delay    → 'delay' phase present but NOT first (inserted after ejecucion)
-    //   Early completion   → a.early_complete === true (user called early_complete endpoint)
-    //   Undock wait        → 'waiting_undock' phase present AND a.early_complete !== true
-    //                        (scheduler inserted a resource-wait phase at berth)
     let _opDelay     = 0;
     let _earlyC      = 0;
     let _undockWait  = 0;
@@ -848,8 +995,8 @@ export class StatisticsComponent implements OnInit, OnDestroy {
         else                              _opDelay++;
       }
       if (hasWaitUndock) {
-        if (a.early_complete) _earlyC++;   // user-triggered early completion
-        else                  _undockWait++; // scheduling resource contention at undock
+        if (a.early_complete) _earlyC++;
+        else                  _undockWait++;
       }
       if ((a.early_arrival_h ?? 0) > 0) _earlyArriv++;
     }
@@ -864,12 +1011,13 @@ export class StatisticsComponent implements OnInit, OnDestroy {
 
   }
 
-  /**
-   * Minimum FTE resources required for a calendar month.
-   * Pilots/tugs work only during `atraque` and `desatraque` phases.
-   * Each individual phase duration is rounded UP to the nearest full hour
-   * (e.g. 30 min → 1 h of charged work time).
-   * Available hours per FTE: max 8 h/day AND max 40 h/week (Mon–Sun).
+  /*
+   * Computes the minimum FTE count of pilots and tugs required to cover all atraque and desatraque
+   * phases in a calendar month, respecting daily (8 h) and weekly (40 h) working hour caps.
+   * @param mAssigns - Assignments belonging to the target month, with phase and tug data
+   * @param year - Four-digit year of the target month
+   * @param month - One-based month number of the target month
+   * @returns Object with pilotsNeededFte and tugsNeededFte integer counts
    */
   private _computeMonthFteResources(
     mAssigns: { phases?: { name: string; duration_h: number }[]; tugs_required: number }[],
@@ -877,7 +1025,6 @@ export class StatisticsComponent implements OnInit, OnDestroy {
   ): { pilotsNeededFte: number; tugsNeededFte: number } {
     const daysInMonth  = new Date(year, month, 0).getDate();
     const weeksInMonth = Math.ceil(daysInMonth / 7);
-    // Binding constraint: 8 h/day daily cap AND 40 h/week weekly cap
     const availHPerFte = Math.min(8 * daysInMonth, 40 * weeksInMonth);
 
     let pilotHours = 0;
@@ -885,7 +1032,7 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     for (const a of mAssigns) {
       const atH = a.phases?.find(p => p.name === 'atraque')?.duration_h    ?? 0;
       const deH = a.phases?.find(p => p.name === 'desatraque')?.duration_h ?? 0;
-      const ph  = Math.ceil(atH) + Math.ceil(deH);   // round each phase up individually
+      const ph  = Math.ceil(atH) + Math.ceil(deH);
       pilotHours += ph;
       tugHours   += (a.tugs_required ?? 0) * ph;
     }
@@ -896,28 +1043,12 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     };
   }
 
-  /**
-   * Aggregate resource-wait hours and demand peaks for a month.
-   *
-   * peakPilots / peakTugs — constrained peak (max simultaneous atraque + desatraque
-   *   in the final schedule).  Always ≤ configured fleet size.
-   *
-   * trueMinPilots / trueMinTugs — minimum fleet required so that NO vessel waits.
-   *
-   *   Formula:  trueMin = constrainedPeak + maxSimultaneousWaiters
-   *
-   *   When pilot_wait_h > 0 the fleet was fully occupied at the berth-available
-   *   time — every waiting vessel represents demand ABOVE the fleet size.
-   *   The maximum number of vessels simultaneously in their wait window tells us
-   *   exactly how many extra resources are needed.
-   *
-   *   Wait windows considered:
-   *     • Fondeo (docking)  pilots: [atraque.start − pilot_wait_h, atraque.start]  (+1 pilot)
-   *     • Fondeo (docking)  tugs:   [atraque.start − tug_wait_h,   atraque.start]  (+nt tugs)
-   *     • waiting_undock            [wu.start, wu.end]                              (+1 pilot, +nt tugs)
-   *
-   *   This avoids the cascading-shift problem: we don't move other vessels' windows,
-   *   we just count how many are queued simultaneously at the time they wanted to dock.
+  /*
+   * Aggregates resource wait hours and computes constrained peak and true minimum fleet sizes for a month.
+   * Uses a sweep-line algorithm over atraque, desatraque, and waiting_undock phase windows to find
+   * the peak simultaneous resource demand without rescheduling other vessels.
+   * @param mAssigns - Optimizer assignments belonging to the target month
+   * @returns Object with pilotWaitH, tugWaitH, waitUndockH, peakPilots, peakTugs, trueMinPilots, trueMinTugs
    */
   private _computeMonthResourceWaits(
     mAssigns: OptimizationAssignment[],
@@ -928,9 +1059,7 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     let tugWaitH    = 0;
     let waitUndockH = 0;
 
-    // Constrained sweep: actual atraque + desatraque windows (max = fleet size)
     const constrained: { t: number; dp: number; dt: number }[] = [];
-    // Wait-window sweep: vessels simultaneously queued for resources
     const waiters:     { t: number; dp: number; dt: number }[] = [];
 
     const push = (arr: typeof constrained, t: number, dp: number, dt: number) =>
@@ -958,13 +1087,11 @@ export class StatisticsComponent implements OnInit, OnDestroy {
           push(constrained, e, -1, -nt);
         } else if (p.name === 'waiting_undock') {
           waitUndockH += p.duration_h;
-          // Vessel queued at berth for 1 pilot + nt tugs
           push(waiters, s, +1, +nt);
           push(waiters, e, -1, -nt);
         }
       }
 
-      // Fondeo resource-wait windows for docking
       if (atraqueStartMs !== null) {
         if (pilotWh > 0.01) {
           push(waiters, atraqueStartMs - pilotWh * 3_600_000, +1, 0);
@@ -1005,7 +1132,13 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     };
   }
 
-  /** Berth occupancy for a calendar month, using scheduled_start/end times. */
+  /*
+   * Computes berth occupancy percentages for a calendar month using optimizer scheduled start/end times.
+   * @param assigns - Optimizer assignments belonging to the target month
+   * @param year - Four-digit year of the target month
+   * @param month - One-based month number of the target month
+   * @returns Array of BerthOccupancy entries sorted by descending occupancy percentage
+   */
   private computeOptiMonthBerthOcc(
     assigns: { berth_id: string; scheduled_start: string; scheduled_end: string }[],
     year: number, month: number,
@@ -1035,6 +1168,9 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     return entries;
   }
 
+  /*
+   * Resets all CSV statistics state to empty, clearing KPIs, monthly stats, and arrival hour data.
+   */
   private clearStats(): void {
     this.kpis         = [];
     this.months       = [];
@@ -1043,6 +1179,9 @@ export class StatisticsComponent implements OnInit, OnDestroy {
     this.selectedMonthIndex = 0;
   }
 
+  /*
+   * Unsubscribes from all active RxJS subscriptions to prevent memory leaks on component teardown.
+   */
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
   }

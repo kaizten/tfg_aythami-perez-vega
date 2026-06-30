@@ -1,9 +1,9 @@
-<!-- Backdrop — z-[1300] ensures it covers the topbar (z-[1200]) -->
+<!-- Backdrop overlay -->
 <div *ngIf="isOpen" class="fixed inset-0 bg-primary/20 backdrop-blur-sm z-[1300] flex justify-end" (click)="close.emit()">
-  <!-- Panel -->
+  <!-- Side panel -->
   <div class="w-[500px] bg-white h-screen shadow-2xl flex flex-col border-l border-outline-variant" (click)="$event.stopPropagation()">
 
-    <!-- Header -->
+    <!-- Vessel header -->
     <div class="p-lg border-b border-outline-variant flex items-center justify-between bg-white sticky top-0 z-10">
       <div class="flex items-center gap-md">
         <div class="w-12 h-12 bg-secondary-container rounded-lg flex items-center justify-center text-on-secondary-container">
@@ -17,10 +17,10 @@
       <button type="button" (click)="close.emit()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface transition-colors">close</button>
     </div>
 
-    <!-- Content -->
+    <!-- Scrollable content -->
     <div class="flex-1 overflow-y-auto p-lg space-y-xl">
 
-      <!-- Status chips -->
+      <!-- Status badges -->
       <div class="grid grid-cols-2 gap-md">
         <div class="bg-surface-container-low p-md rounded-lg border border-outline-variant">
           <p class="text-label-sm text-on-surface-variant mb-xs uppercase">{{ 'vessel.status' | translate }}</p>
@@ -44,7 +44,7 @@
         </p>
       </div>
 
-      <!-- Vessel Info -->
+      <!-- Vessel info -->
       <section>
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">info</span>
@@ -66,7 +66,7 @@
         </div>
       </section>
 
-      <!-- Assigned Berth -->
+      <!-- Berth assignment -->
       <section>
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">anchor</span>
@@ -93,7 +93,7 @@
         </div>
       </section>
 
-      <!-- Cargo -->
+      <!-- Cargo list -->
       <section *ngIf="vessel?.cargo?.length">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">inventory_2</span>
@@ -114,14 +114,14 @@
         </div>
       </section>
 
-      <!-- Operation phases section -->
+      <!-- Operation phases -->
       <section *ngIf="vessel?.phases?.length">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">view_timeline</span>
           {{ 'opt.detail.phases_title' | translate }}
         </h3>
 
-        <!-- Proportional colour bar (all 4 phases) -->
+        <!-- Phase colour bar -->
         <div class="flex w-full rounded-lg overflow-hidden h-5 mb-md">
           <ng-container *ngFor="let phase of vessel?.phases">
             <div *ngIf="phase.duration_h > 0"
@@ -133,7 +133,7 @@
           </ng-container>
         </div>
 
-        <!-- Per-phase breakdown grid -->
+        <!-- Phase breakdown grid -->
         <div class="grid grid-cols-2 gap-sm">
           <div *ngFor="let phase of vessel?.phases"
                class="bg-surface-container-low p-sm rounded-lg border border-outline-variant">
@@ -151,7 +151,7 @@
         </div>
       </section>
 
-      <!-- Optimizer schedule section -->
+      <!-- Optimizer schedule -->
       <section *ngIf="vessel?.optimizerStatus">
         <h3 class="text-h3 font-semibold text-on-surface mb-md flex items-center gap-base">
           <span class="material-symbols-outlined text-teal-600">schedule</span>
@@ -221,13 +221,12 @@
       </section>
     </div>
 
-    <!-- Footer actions — only visible in optimizer mode -->
+    <!-- Footer actions -->
     <div *ngIf="isOptimizerMode" class="p-lg border-t border-outline-variant bg-surface-container-lowest space-y-sm">
 
-      <!-- Add Delay button / inline form (when not yet completed) -->
+      <!-- Delay input form -->
       <ng-container *ngIf="vessel?.canAddDelay && !isCompleted">
 
-        <!-- Delay input form -->
         <div *ngIf="showDelayInput"
              class="p-md rounded-xl border border-amber-200 bg-amber-50 space-y-sm">
           <p class="text-label-sm text-amber-800 font-semibold">{{ 'vessel.delay_hours' | translate }}</p>
@@ -250,7 +249,7 @@
           </div>
         </div>
 
-        <!-- Add Delay trigger button -->
+        <!-- Add delay trigger button -->
         <button *ngIf="!showDelayInput"
                 type="button"
                 (click)="showDelayInput = true"
@@ -260,20 +259,18 @@
         </button>
       </ng-container>
 
-      <!-- Completed -->
+      <!-- Confirm / completed actions -->
       <div *ngIf="isCompleted"
            class="w-full py-md text-label-md bg-green-600 text-white rounded-lg flex items-center justify-center gap-sm shadow-md">
         <span class="material-symbols-outlined text-base">check_circle</span>
         {{ 'vessel.status.completed' | translate }}
       </div>
-      <!-- On the Way → Confirm Arrival (hidden while delay form is open) -->
       <button *ngIf="isOnTheWay && !showDelayInput"
               type="button"
               (click)="confirm.emit()"
               class="w-full py-md text-label-md bg-blue-600 text-white rounded-lg hover:opacity-90 transition-all shadow-md">
         {{ 'vessel.confirm_arrival' | translate }}
       </button>
-      <!-- In Progress → Confirm Operation (hidden while delay form is open) -->
       <button *ngIf="isInProgress && !showDelayInput"
               type="button"
               (click)="confirm.emit()"

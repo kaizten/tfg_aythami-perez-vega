@@ -1,9 +1,4 @@
-"""
-Berth allocation optimization service — scaffold only.
-
-This module will contain the optimization algorithm once the
-data_transformer module is validated in production.
-"""
+"""Berth allocation optimization service — scaffold only."""
 
 import logging
 from typing import Any
@@ -26,13 +21,13 @@ class OptimizationService:
         Run the optimization algorithm over a list of validated berth calls.
 
         Args:
-            berth_calls: List of transformed and validated BerthCall records.
+            berth_calls (list[BerthCall]): List of transformed and validated BerthCall records. Required.
 
         Returns:
-            Optimization result (schema TBD).
+            Any: Optimization result (schema TBD).
 
         Raises:
-            NotImplementedError: Always — not yet implemented.
+            NotImplementedError: Always — this method is not yet implemented.
         """
         raise NotImplementedError(
             "OptimizationService.optimize() is not yet implemented. "

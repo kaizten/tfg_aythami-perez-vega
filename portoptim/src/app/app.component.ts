@@ -7,5 +7,6 @@ import { Component } from '@angular/core';
   styleUrl: './app.component.scss'
 })
 export class AppComponent {
+  /* Fixed - application name identifier */
   title = 'portoptim';
 }

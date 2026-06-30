@@ -14,6 +14,7 @@ import { TransformationStoreService } from '../../core/services/transformation-s
 
 interface Column { name: string; key: keyof BerthCall; valid: boolean; }
 
+/* Fixed - ordered list of BerthCall property keys and their i18n translation keys for the preview table columns */
 const COLUMN_KEYS: { key: keyof BerthCall; tKey: string }[] = [
   { key: 'call_id',        tKey: 'di.col.call_id' },
   { key: 'berth_id',       tKey: 'di.col.mooring_zone' },
@@ -27,6 +28,11 @@ const COLUMN_KEYS: { key: keyof BerthCall; tKey: string }[] = [
   { key: 'duration_hours', tKey: 'di.col.duration' },
 ];
 
+/*
+ * Returns an ordered array of unique berth IDs from the records, preserving first-occurrence order.
+ * @param records - Array of BerthCall objects from the transformation result (required)
+ * @returns Deduplicated berth ID strings in first-seen order
+ */
 function uniqueOrdered(records: BerthCall[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -43,21 +49,33 @@ function uniqueOrdered(records: BerthCall[]): string[] {
   styleUrl: './data-input.component.scss',
 })
 export class DataInputComponent implements OnDestroy {
+  /* User-provided - file selected by the user via the file picker or drag-and-drop */
   selectedFile: File | null = null;
+  /* Computed - whether an upload/transform API request is currently in-flight */
   loading = false;
+  /* Computed - error message from the last failed API call, null when no error is present */
   error: string | null = null;
+  /* Computed - transformation result received from the API after a successful upload */
   result: TransformApiResponse | null = null;
 
+  /* User-provided - pilot and tug resource counts and mooring zone configurations entered by the user */
   optimizationParams: OptimizationParams = { num_pilots: null, num_tugs: null, mooring_zones: [] };
-  /** True once the user has clicked "Proceed" at least once — enables inline error hints. */
+  /* Computed - true once the user has clicked Proceed at least once, enabling inline validation hints */
   submitted = false;
+  /* Computed - whether the saved-config restore banner should be displayed */
   savedConfigBanner = false;
+  /* Computed - previously saved optimization config matching the current berth set, or null if none found */
   private savedConfigForBerths: OptimizationParams | null = null;
+  /* User-provided - berth ID text entered in the manual add-berth input field */
   newBerthId = '';
+  /* Computed - whether the add-berth input has a duplicate ID error */
   newBerthError = false;
+  /* User-provided - search query for filtering the mooring zones list */
   berthSearchQuery = '';
+  /* Computed - set of berth IDs that originated from the uploaded CSV, used to prevent deletion */
   private csvBerthIds = new Set<string>();
 
+  /* Computed - active subscription to the file upload Observable */
   private sub?: Subscription;
 
   constructor(
@@ -68,17 +86,12 @@ export class DataInputComponent implements OnDestroy {
     readonly lang: LanguageService,
   ) {
     this.result = this.store.snapshot;
-    // Populate csvBerthIds from the store snapshot so berths already present in
-    // the CSV are protected from deletion even after a page reload.
     if (this.result) {
       this.csvBerthIds = new Set(uniqueOrdered(this.result.data));
     }
     const saved = this.paramsStore.snapshot;
     if (saved) this.optimizationParams = { ...saved };
 
-    // When returning to this page (CSV already loaded, no new upload), check
-    // localStorage for a previously committed config and surface the banner —
-    // but only when the current params aren't already fully configured.
     const alreadyConfigured = (this.optimizationParams.num_pilots ?? 0) > 0
                            && (this.optimizationParams.num_tugs   ?? 0) > 0;
     if (this.result && !alreadyConfigured) {
@@ -86,17 +99,36 @@ export class DataInputComponent implements OnDestroy {
     }
   }
 
-  // ── Getters ──────────────────────────────────────────────────────────────
-
+  /*
+   * Returns the translated column definitions for the data preview table.
+   * @returns Array of Column objects with name, key, and valid flag
+   */
   get columns(): Column[] {
     return COLUMN_KEYS.map(c => ({ name: this.lang.t(c.tKey), key: c.key, valid: true }));
   }
 
+  /*
+   * Returns true when a transformation result is available.
+   * @returns Boolean indicating whether result is non-null
+   */
   get hasResult(): boolean { return this.result !== null; }
+
+  /*
+   * Returns the first ten berth call records for the preview table.
+   * @returns Slice of up to ten BerthCall objects, or an empty array if no result is loaded
+   */
   get previewRows(): BerthCall[] { return this.result?.data.slice(0, 10) ?? []; }
+
+  /*
+   * Returns the ordered list of unique berth IDs present in the current result.
+   * @returns Array of unique berth ID strings in first-seen order
+   */
   get uniqueBerths(): string[] { return this.result ? uniqueOrdered(this.result.data) : []; }
 
-  /** Zones filtered by the berth search query (display only — data is never removed). */
+  /*
+   * Returns the mooring zones filtered by the current berth search query for display purposes only.
+   * @returns Filtered subset of optimizationParams.mooring_zones matching the search query
+   */
   get filteredMooringZones() {
     const q = this.berthSearchQuery.trim().toLowerCase();
     if (!q) return this.optimizationParams.mooring_zones;
@@ -105,7 +137,10 @@ export class DataInputComponent implements OnDestroy {
     );
   }
 
-  /** Returns a list of human-readable validation errors for the params form. */
+  /*
+   * Returns a list of human-readable validation error messages for the params form.
+   * @returns Array of translated error strings, empty when the form is valid
+   */
   get paramErrors(): string[] {
     const errors: string[] = [];
     const p = this.optimizationParams;
@@ -127,10 +162,18 @@ export class DataInputComponent implements OnDestroy {
     return errors;
   }
 
+  /*
+   * Returns true when the params form has no validation errors.
+   * @returns Boolean indicating whether paramErrors is empty
+   */
   get paramsValid(): boolean { return this.paramErrors.length === 0; }
 
-  // ── Formatting ────────────────────────────────────────────────────────────
-
+  /*
+   * Formats a BerthCall cell value for display in the preview table, localizing dates and units.
+   * @param row - The BerthCall record containing the value to format (required)
+   * @param key - The property key of the value to format (required)
+   * @returns Formatted string for display, or '—' for null/undefined values
+   */
   formatCell(row: BerthCall, key: keyof BerthCall): string {
     const val = row[key];
     if (val === null || val === undefined) return '—';
@@ -141,19 +184,29 @@ export class DataInputComponent implements OnDestroy {
     return String(val);
   }
 
-  // ── File handling ─────────────────────────────────────────────────────────
-
+  /*
+   * Handles the native file input change event and initiates the file upload.
+   * @param event - The DOM change event from the file input element (required)
+   */
   onFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files?.length) this.upload(input.files[0]);
   }
 
+  /*
+   * Handles a file drag-and-drop event and initiates the file upload.
+   * @param event - The DOM DragEvent containing the dropped file (required)
+   */
   onFileDrop(event: DragEvent): void {
     event.preventDefault();
     const file = event.dataTransfer?.files?.[0];
     if (file) this.upload(file);
   }
 
+  /*
+   * Uploads the given file to the transformation API, resets state, and populates the result on success.
+   * @param file - The CSV or Excel file to upload and transform (required)
+   */
   upload(file: File): void {
     this.selectedFile = file;
     this.error = null;
@@ -178,24 +231,28 @@ export class DataInputComponent implements OnDestroy {
     });
   }
 
+  /*
+   * Validates the params form and navigates to the optimization page if valid.
+   */
   goToOptimization(): void {
     if (!this.result) return;
     this.submitted = true;
     if (!this.paramsValid) return;
-    // Sync the in-memory store so the optimization page picks up the latest params.
-    // localStorage is written only after the optimizer actually runs successfully.
     this.paramsStore.set(this.optimizationParams);
     this.router.navigate(['/optimization']);
   }
 
+  /*
+   * Persists the current params to the in-memory store before the component is destroyed, without writing to localStorage.
+   */
   ngOnDestroy(): void {
-    // Keep in-memory store up to date for navigation (scratch-pad state).
-    // Do NOT write to localStorage here — that would overwrite the last valid
-    // committed config with a potentially incomplete or partial form state.
     this.paramsStore.set(this.optimizationParams);
     this.sub?.unsubscribe();
   }
 
+  /*
+   * Rebuilds the mooring zones list from the current result, preserving any previously configured zone settings.
+   */
   private _syncMooringZones(): void {
     const berths = uniqueOrdered(this.result?.data ?? []);
     const prev = new Map<string, MooringZoneConfig>(
@@ -205,19 +262,21 @@ export class DataInputComponent implements OnDestroy {
       prev.get(id) ?? { berth_id: id, bap_type: 'continuous', noray_max: null, capacity: null }
     );
     this.csvBerthIds = new Set(berths);
-    // Always offer to load a saved config when a new CSV is uploaded.
     this._checkSavedConfig(berths);
   }
 
-  // ── Config persistence ────────────────────────────────────────────────────
-
+  /*
+   * Derives a localStorage key unique to the given ordered set of berth IDs.
+   * @param berths - Ordered array of berth ID strings (required)
+   * @returns localStorage key string for the matching config entry
+   */
   private localStorageKey(berths: string[]): string {
     return 'portoptim_config_' + [...berths].sort().join('|');
   }
 
-  /**
-   * Checks localStorage for a saved config that matches the given berth list.
-   * If found, stores it in {@link savedConfigForBerths} and raises the banner.
+  /*
+   * Checks localStorage for a previously saved config matching the given berth list and surfaces the restore banner if found.
+   * @param berths - Ordered array of berth IDs from the current result (required)
    */
   private _checkSavedConfig(berths: string[]): void {
     const raw = localStorage.getItem(this.localStorageKey(berths));
@@ -230,6 +289,9 @@ export class DataInputComponent implements OnDestroy {
     }
   }
 
+  /*
+   * Applies the saved configuration pilots, tugs, and matching mooring zones to the current params.
+   */
   applySavedConfig(): void {
     const saved = this.savedConfigForBerths;
     if (!saved) return;
@@ -242,10 +304,16 @@ export class DataInputComponent implements OnDestroy {
     this.savedConfigBanner = false;
   }
 
+  /*
+   * Hides the saved-config restore banner without applying the saved values.
+   */
   dismissSavedConfig(): void {
     this.savedConfigBanner = false;
   }
 
+  /*
+   * Exports the current optimization parameters as a downloadable JSON file.
+   */
   exportConfig(): void {
     const json = JSON.stringify(this.optimizationParams, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
@@ -257,6 +325,10 @@ export class DataInputComponent implements OnDestroy {
     URL.revokeObjectURL(url);
   }
 
+  /*
+   * Reads a JSON config file selected by the user and merges its values into the current optimization params.
+   * @param event - The DOM change event from the import file input element (required)
+   */
   onImportFile(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -279,12 +351,18 @@ export class DataInputComponent implements OnDestroy {
     reader.readAsText(file);
   }
 
-  // ── Berth management ──────────────────────────────────────────────────────
-
+  /*
+   * Returns whether the given berth ID originated from the uploaded CSV and is therefore protected from deletion.
+   * @param berthId - The berth identifier to check (required)
+   * @returns True if the berth was present in the uploaded CSV
+   */
   isCsvBerth(berthId: string): boolean {
     return this.csvBerthIds.has(berthId);
   }
 
+  /*
+   * Adds a new manually entered berth to the mooring zones list if the ID is non-empty and not already present.
+   */
   addBerth(): void {
     const id = this.newBerthId.trim();
     if (!id) return;
@@ -300,6 +378,10 @@ export class DataInputComponent implements OnDestroy {
     this.newBerthError = false;
   }
 
+  /*
+   * Removes a manually added berth from the mooring zones list, refusing to remove CSV-originated berths.
+   * @param berthId - The berth identifier to remove (required)
+   */
   removeBerth(berthId: string): void {
     if (this.csvBerthIds.has(berthId)) return;
     this.optimizationParams.mooring_zones = this.optimizationParams.mooring_zones.filter(
