@@ -150,6 +150,92 @@ La aplicación estará disponible en `http://localhost:4200`.
 
 ---
 
+## Guía de usuario
+
+Esta guía describe el flujo de uso habitual de la aplicación, página por página, tal como la vería un operador portuario.
+
+### Flujo general
+
+```
+1. Data Input     → subir CSV/Excel + configurar recursos (pilotos, remolcadores, muelles)
+2. Optimización   → ejecutar el motor de optimización y revisar el Gantt de 5 días
+3. Dashboard      → seguimiento operativo diario (Gantt 24 h + mapa AIS en tiempo real)
+4. Estadísticas   → análisis histórico y del resultado del optimizador
+```
+
+El estado se comparte automáticamente entre páginas (mediante los *stores* de la app), así que no hace falta repetir la carga de datos al navegar de una sección a otra.
+
+### 1. Carga de datos y configuración (`/data-input`)
+
+Es el punto de partida obligatorio: sin datos transformados, el resto de páginas no tienen contenido que mostrar.
+
+1. **Subir el fichero**: arrastra un `.csv` o `.xlsx` sobre la zona de carga, o selecciónalo con el explorador de archivos (tamaño máximo 50 MB).
+2. **Revisar la vista previa**: la app muestra las 10 primeras filas ya transformadas, junto con una tarjeta de *Resumen de transformación* (filas totales, registros válidos, filas omitidas y motivos de omisión).
+3. **Configurar los recursos del optimizador**, en el panel *Optimization Parameters*:
+   - Número de **pilotos** y **remolcadores** disponibles.
+   - Definición de cada **muelle**: continuo (con `noray_max`) o discreto (con `capacity` en slots).
+   - Puedes filtrar la lista de muelles con el buscador en vivo.
+4. **Guardar la configuración**: se persiste automáticamente en el navegador (localStorage). También puedes **exportar** la configuración a un fichero JSON para reutilizarla, o **importar** una configuración previamente guardada.
+
+> 💡 Si vuelves a esta página más adelante, tu configuración de pilotos/remolcadores/muelles seguirá ahí.
+
+### 2. Ejecutar la optimización (`/optimization`)
+
+Aquí se lanza el motor de optimización de 3 fases y se gestiona la operativa día a día.
+
+1. Pulsa **Ejecutar optimización** para lanzar el proceso (calibración opcional → greedy → búsqueda local). Al finalizar, la página cambia automáticamente de modo *Histórico* a modo *Optimizador*.
+2. **Lee las tarjetas KPI**: fondeo total, fondeo medio, mejora vs. greedy (%) y buques sin resolver. Los colores indican si el valor es favorable o no.
+3. **Navega el Gantt de 5 días**: usa las flechas para moverte de ventana en ventana (5 días a la vez). Cada fila es un muelle; cada barra, una escala.
+4. **Interpreta los colores de las fases**:
+
+   | Color | Fase | Significado |
+   |---|---|---|
+   | Ámbar (burbuja ⚓) | `fondeo` | Buque esperando fondeado |
+   | Azul cielo | `atraque` | Maniobra de atraque |
+   | Verde | `ejecucion` | Carga/descarga en curso |
+   | Índigo | `desatraque` | Maniobra de desatraque |
+   | Rojo | `delay` | Retraso aplicado (llegada u operación) |
+   | Lila | `waiting_undock` | Esperando recursos para desatracar |
+   | Cian | `early_arrival` | El buque llegó antes de lo previsto |
+
+5. **Iconos de aviso** sobre las barras: ⚠ naranja = la operación ha superado su hora prevista de fin; ⚓ ámbar = el buque está en ventana de llegada (entre 1 h antes y 3 h después de su ETA).
+6. **Panel de detalle de un buque**: haz clic sobre cualquier barra del Gantt para abrir el panel lateral con la ficha completa (muelle asignado, mercancía, desglose de fases). Desde ahí puedes:
+   - Avanzar el estado operativo: *en camino → en curso → completado*.
+   - Pulsar **Delay** para registrar un retraso de llegada o de operación (el sistema re-planifica solo lo necesario).
+   - Pulsar **Early Complete** para confirmar que la carga/descarga terminó antes de lo previsto; el sistema calcula el desatraque más temprano posible y adelanta la cola de espera de ese muelle si procede.
+7. **Re-ejecutar**: el botón *Re-run* limpia el resultado actual y vuelve al modo histórico, por si quieres lanzar la optimización de nuevo con otros parámetros.
+
+### 3. Seguimiento diario (`/dashboard`)
+
+Vista operativa del día a día, pensada para consulta rápida.
+
+- **Tarjetas KPI**: buques totales, muelles activos, duración media y filas omitidas.
+- **Gantt de 24 horas**: igual que el de optimización pero centrado en un solo día, con navegación por días y una línea verde vertical que marca la hora actual («ahora»). Cambia automáticamente entre datos históricos y datos del optimizador, según cuál esté disponible.
+- **Mapa del puerto**: mapa satelital interactivo con las posiciones AIS de los buques en tiempo real (requiere que el backend tenga configurada una clave de aisstream.io). Los marcadores rotan según el rumbo del buque y se colorean según su estado de navegación.
+- **Alertas de acción**: panel con los avisos operativos más relevantes del momento.
+
+### 4. Estadísticas (`/statistics`)
+
+Análisis en profundidad, organizado en dos pestañas (la pestaña *Optimizer* solo aparece una vez que has ejecutado una optimización):
+
+- **Pestaña CSV** — analiza el dataset histórico: ocupación por muelle, evolución mensual de duración y volumen de carga (navegable por ventanas de 6 meses), desglose por tipo de operación/mercancía y distribución horaria de llegadas.
+- **Pestaña Optimizer** — analiza el resultado de la última optimización: tiempos de fondeo, duración media por fase, fondeo por muelle, distribución de atraques/desatraques por hora, y un panel de **recursos** con horas de espera por pilotos/remolcadores, picos de uso simultáneo y una estimación de personal necesario (FTE) mes a mes.
+
+### Alertas de buques
+
+El sistema vigila automáticamente (refresco cada 60 s) los buques a punto de llegar o que deberían haber zarpado ya:
+
+- Aparece un **toast** emergente por cada alerta nueva, con auto-cierre a los 6 segundos (o cierre manual).
+- El icono de campana en la barra superior muestra un contador de alertas no leídas; al abrir el panel puedes revisar el histórico y marcarlas todas como leídas.
+- Si una optimización o re-planificación termina mientras estás en otra página, un toast flotante te avisa igualmente.
+
+### Otros ajustes de la interfaz
+
+- **Idioma**: selector desplegable en la barra superior (español, inglés, alemán, francés).
+- La barra lateral izquierda da acceso directo a las cuatro páginas principales en cualquier momento.
+
+---
+
 ## API — Endpoints principales
 
 | Método | Ruta | Descripción |
